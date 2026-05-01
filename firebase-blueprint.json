@@ -1,0 +1,128 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and preferences",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Account": {
+      "title": "Account",
+      "description": "Financial accounts like wallets, cards, or bank accounts",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["wallet", "card", "bank"] },
+        "initialBalance": { "type": "number" },
+        "currentBalance": { "type": "number" },
+        "userId": { "type": "string" },
+        "color": { "type": "string" },
+        "icon": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type", "initialBalance", "currentBalance", "userId"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Expense or income categories",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["expense", "income"] },
+        "icon": { "type": "string" },
+        "userId": { "type": "string" },
+        "isDefault": { "type": "boolean" }
+      },
+      "required": ["name", "type", "userId"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Individual income or expense records",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["expense", "income"] },
+        "categoryId": { "type": "string" },
+        "accountId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" },
+        "userId": { "type": "string" },
+        "groupId": { "type": "string" }
+      },
+      "required": ["amount", "type", "categoryId", "accountId", "date", "userId"]
+    },
+    "Group": {
+      "title": "Group",
+      "description": "Groups for bill splitting",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "members": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId", "members"]
+    },
+    "GroupExpense": {
+      "title": "GroupExpense",
+      "description": "Expenses shared within a group",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "paidBy": { "type": "string" },
+        "groupId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "splits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "userId": { "type": "string" },
+              "amount": { "type": "number" },
+              "status": { "type": "string", "enum": ["pending", "settled"] }
+            }
+          }
+        },
+        "userId": { "type": "string" }
+      },
+      "required": ["description", "totalAmount", "paidBy", "groupId", "splits", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/accounts/{accountId}": {
+      "schema": "Account",
+      "description": "User financial accounts"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "User categories"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "User transactions"
+    },
+    "/groups/{groupId}": {
+      "schema": "Group",
+      "description": "Bill splitting groups"
+    },
+    "/groupExpenses/{expenseId}": {
+      "schema": "GroupExpense",
+      "description": "Shared expenses in groups"
+    }
+  }
+}
