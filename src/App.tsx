@@ -26,8 +26,9 @@ function AppContent() {
 
   useEffect(() => {
     const hasSeenTour = user ? localStorage.getItem(`onboarding_seen_${user.uid}`) : null;
-    
-    if (profile?.onboardingCompleted === false && !isTourOpen && !hasAutoStarted.current && !hasSeenTour) {
+    const isCompleted = profile?.onboardingCompleted === true;
+
+    if (profile && !isCompleted && !isTourOpen && !hasAutoStarted.current && !hasSeenTour) {
       console.log("Auto-starting tour for user:", user?.uid, "Profile:", profile);
       hasAutoStarted.current = true;
       // Auto start for brand new users

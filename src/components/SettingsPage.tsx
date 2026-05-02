@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, serverTim
 import { useAuth } from './AuthProvider';
 import { Category, TransactionType, CURRENCIES } from '../types';
 import { cn } from '../lib/utils';
-import { Plus, Trash2, X, Tag, ShoppingBag, Coffee, Car, Home, Heart, MoreHorizontal, User, Smartphone, Layout, AlertTriangle, Loader2, Globe } from 'lucide-react';
+import { Plus, Trash2, X, Tag, ShoppingBag, Coffee, Car, Home, Heart, MoreHorizontal, User, Smartphone, Layout, AlertTriangle, Loader2, Globe, Pencil } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function SettingsPage() {
@@ -14,6 +14,7 @@ export function SettingsPage() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isUpdatingCurrency, setIsUpdatingCurrency] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   
   // Form State
   const [name, setName] = useState('');
@@ -121,28 +122,54 @@ export function SettingsPage() {
     }
   };
 
-  const handleAddCategory = async (e: React.FormEvent) => {
+  const handleSubmitCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !name) return;
 
     try {
-      await addDoc(collection(db, 'categories'), {
-        name,
-        type,
-        icon: 'Tag',
-        userId: user.uid,
-        createdAt: serverTimestamp(),
-      });
-      toast.success('Category added');
+      if (editingCategory) {
+        await updateDoc(doc(db, 'categories', editingCategory.id), {
+          name,
+        });
+        toast.success('Category updated');
+      } else {
+        await addDoc(collection(db, 'categories'), {
+          name,
+          type,
+          icon: 'Tag',
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+        });
+        toast.success('Category added');
+      }
       setName('');
+      setEditingCategory(null);
       setIsModalOpen(false);
     } catch (err) {
-      toast.error('Failed to add category');
+      toast.error(editingCategory ? 'Failed to update category' : 'Failed to add category');
     }
   };
 
+  const handleEdit = (category: Category) => {
+    setEditingCategory(category);
+    setName(category.name);
+    setType(category.type);
+    setIsModalOpen(true);
+  };
+
   const handleDelete = async (id: string) => {
+    if (!user) return;
+    
     try {
+      // Check if any transactions use this category
+      const q = query(collection(db, 'transactions'), where('categoryId', '==', id), where('userId', '==', user.uid));
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        toast.error('Cannot delete: Category is being used by transactions');
+        return;
+      }
+
       await deleteDoc(doc(db, 'categories', id));
       toast.success('Category removed');
     } catch (err) {
@@ -238,7 +265,12 @@ export function SettingsPage() {
                 <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Transaction Categories</h3>
                 <button 
                   id="btn-add-category"
-                  onClick={() => setIsModalOpen(true)}
+                  onClick={() => {
+                    setEditingCategory(null);
+                    setName('');
+                    setType('expense');
+                    setIsModalOpen(true);
+                  }}
                   className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-blue-700 transition-colors"
                 >
                   + Create
@@ -261,9 +293,14 @@ export function SettingsPage() {
                               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">{c.type}</p>
                            </div>
                         </div>
-                        <button onClick={() => handleDelete(c.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all scale-90">
-                           <X className="h-4 w-4" />
-                        </button>
+                         <div className="flex items-center gap-2">
+                            <button onClick={() => handleEdit(c)} className="text-slate-400 hover:text-blue-600 transition-all scale-90 p-1 hover:bg-blue-50 rounded-md">
+                               <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => handleDelete(c.id)} className="text-slate-400 hover:text-red-600 transition-all scale-90 p-1 hover:bg-red-50 rounded-md">
+                               <X className="h-4 w-4" />
+                            </button>
+                         </div>
                      </div>
                    ))}
                    {categories.length === 0 && (
@@ -350,14 +387,16 @@ export function SettingsPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div id="modal-add-category" className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl border border-slate-200">
+           <div id="modal-add-category" className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center mb-8">
-              <h3 className="text-xl font-bold text-slate-900 tracking-tight">New Category</h3>
+              <h3 className="text-xl font-bold text-slate-900 tracking-tight">
+                {editingCategory ? 'Edit Category' : 'New Category'}
+              </h3>
               <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <form onSubmit={handleAddCategory} className="space-y-6">
+            <form onSubmit={handleSubmitCategory} className="space-y-6">
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Category Name</label>
                 <input 
@@ -368,11 +407,14 @@ export function SettingsPage() {
                   placeholder="e.g. Subscriptions, Gifts"
                 />
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Transaction Flow</label>
+              <div className={cn(editingCategory && "opacity-50 pointer-events-none")}>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                  Transaction Flow {editingCategory && "(Immutable)"}
+                </label>
                 <div className="flex p-1 bg-slate-100 rounded-xl">
                   <button
                     type="button"
+                    disabled={!!editingCategory}
                     onClick={() => setType('expense')}
                     className={cn(
                       "flex-1 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-all",
@@ -383,6 +425,7 @@ export function SettingsPage() {
                   </button>
                   <button
                     type="button"
+                    disabled={!!editingCategory}
                     onClick={() => setType('income')}
                     className={cn(
                       "flex-1 py-2 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-all",
@@ -397,7 +440,7 @@ export function SettingsPage() {
                 type="submit"
                 className="w-full bg-slate-900 text-white py-4 rounded-lg font-bold text-sm shadow-xl shadow-slate-200 hover:bg-slate-800 transition-all mt-4"
               >
-                Add Category
+                {editingCategory ? 'Update Category' : 'Add Category'}
               </button>
             </form>
           </div>
