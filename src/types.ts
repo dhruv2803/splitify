@@ -16,6 +16,7 @@ export interface UserProfile {
   photoURL: string | null;
   currency?: string;
   isAdmin?: boolean;
+  onboardingCompleted?: boolean;
   createdAt: string;
 }
 

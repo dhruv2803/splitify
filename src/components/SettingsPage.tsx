@@ -265,6 +265,7 @@ export function SettingsPage() {
              <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
                 <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Transaction Categories</h3>
                 <button 
+                  id="btn-add-category"
                   onClick={() => setIsModalOpen(true)}
                   className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-blue-700 transition-colors"
                 >

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './components/AuthProvider';
 import { Toaster } from 'react-hot-toast';
 import { Layout } from './components/Layout';
@@ -14,12 +14,21 @@ import { GroupsPage } from './components/GroupsPage';
 import { SettingsPage } from './components/SettingsPage';
 import { AdminPage } from './components/AdminPage';
 import { LandingPage } from './components/LandingPage';
+import { OnboardingTour } from './components/OnboardingTour';
 import { AnimatePresence, motion } from 'motion/react';
 
 function AppContent() {
   const { user, loading, profile } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isTourOpen, setIsTourOpen] = useState(false);
 
+  useEffect(() => {
+    if (profile && profile.onboardingCompleted === undefined) {
+      // Auto start for brand new users
+      const timer = setTimeout(() => setIsTourOpen(true), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [profile]);
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-gray-50">
@@ -56,7 +65,11 @@ function AppContent() {
   };
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+    <Layout 
+      activeTab={activeTab} 
+      setActiveTab={setActiveTab} 
+      onStartTour={() => setIsTourOpen(true)}
+    >
       <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
@@ -69,6 +82,13 @@ function AppContent() {
           {renderContent()}
         </motion.div>
       </AnimatePresence>
+
+      <OnboardingTour 
+        isOpen={isTourOpen} 
+        onClose={() => setIsTourOpen(false)} 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+      />
     </Layout>
   );
 }

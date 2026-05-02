@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Wallet, Receipt, Users, Settings, LogOut, Shield } from 'lucide-react';
+import { Home, Wallet, Receipt, Users, Settings, LogOut, Shield, Sparkles } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { cn } from '../lib/utils';
 import { motion } from 'motion/react';
@@ -8,9 +8,10 @@ interface LayoutProps {
   children: React.ReactNode;
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  onStartTour?: () => void;
 }
 
-export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
+export function Layout({ children, activeTab, setActiveTab, onStartTour }: LayoutProps) {
   const { logout, user, profile } = useAuth();
 
   const menuItems = [
@@ -43,6 +44,7 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
           {menuItems.map((item) => (
             <button
               key={item.id}
+              id={`nav-${item.id}`}
               onClick={() => setActiveTab(item.id)}
               className={cn(
                 "flex items-center w-full px-3 py-2 text-sm font-medium rounded-md transition-colors",
@@ -58,6 +60,14 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
         </nav>
 
         <div className="p-6 border-t border-slate-100">
+          <button
+            onClick={onStartTour}
+            className="w-full mb-4 flex items-center justify-center gap-2 py-2.5 bg-blue-50 text-blue-700 font-bold text-[10px] uppercase tracking-widest rounded-xl hover:bg-blue-100 transition-all border border-blue-100"
+          >
+            <Sparkles className="h-3 w-3" />
+            Quick Start Tour
+          </button>
+
           <div className="flex items-center p-2 bg-slate-50 rounded-lg mb-4">
             <img 
               src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName}&background=3b82f6&color=fff`} 
@@ -91,6 +101,7 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
         {menuItems.map((item) => (
           <button
             key={item.id}
+            id={`mobile-nav-${item.id}`}
             onClick={() => setActiveTab(item.id)}
             className={cn(
               "flex flex-col items-center justify-center p-2 rounded-lg transition-all",

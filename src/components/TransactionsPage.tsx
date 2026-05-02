@@ -147,6 +147,7 @@ export function TransactionsPage() {
           <p className="text-slate-500 text-sm font-medium">Your historical financial velocity</p>
         </div>
         <button 
+          id="btn-add-transaction"
           onClick={() => setIsModalOpen(true)}
           className="bg-slate-900 text-white px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 transition-all active:scale-95"
         >

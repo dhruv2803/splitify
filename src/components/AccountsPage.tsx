@@ -124,6 +124,7 @@ export function AccountsPage() {
           <p className="text-slate-500 text-sm font-medium">Manage your funding sources and assets</p>
         </div>
         <button 
+          id="btn-add-account"
           onClick={() => setIsModalOpen(true)}
           className="bg-slate-900 text-white px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 transition-all active:scale-95"
         >

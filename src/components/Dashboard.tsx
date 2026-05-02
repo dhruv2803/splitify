@@ -355,7 +355,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
 
       {/* Main Charts Row */}
       <section className="grid grid-cols-1 lg:grid-cols-5 gap-4 md:gap-6">
-        <div className="lg:col-span-3 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500">
+        <div id="chart-momentum" className="lg:col-span-3 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500">
            <div className="flex items-center gap-3 mb-8">
               <div className="p-2 bg-blue-50 rounded-xl text-blue-600 shadow-sm border border-blue-100">
                 <TrendingUp className="h-4 w-4" />
@@ -407,7 +407,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
            </div>
         </div>
 
-        <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 overflow-hidden">
+        <div id="chart-categories" className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 overflow-hidden">
            <div className="flex items-center gap-3 mb-8">
               <div className="p-2 bg-pink-50 rounded-xl text-pink-600 shadow-sm border border-pink-100">
                 <ChartPie className="h-4 w-4" />
@@ -477,7 +477,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
       </section>
 
       {/* Footer Charts / Comparison */}
-      <section className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm overflow-hidden relative hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500">
+      <section id="chart-comparison" className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm overflow-hidden relative hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500">
          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-[100px] -mr-32 -mt-32"></div>
          
          <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
