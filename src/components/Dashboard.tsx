@@ -3,7 +3,7 @@ import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from './AuthProvider';
 import { Account, Transaction, Category } from '../types';
-import { cn, formatCurrency } from '../lib/utils';
+import { cn, formatCurrency, convertCurrency } from '../lib/utils';
 import { motion } from 'motion/react';
 import { Plus, ArrowUpRight, ArrowDownLeft, Wallet as WalletIcon, CreditCard, Landmark, ChartPie, TrendingUp, Calendar as CalendarIcon } from 'lucide-react';
 import { 
@@ -18,12 +18,15 @@ interface DashboardProps {
 }
 
 export function Dashboard({ setActiveTab }: DashboardProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const currency = profile?.currency || 'INR';
+  const format = (amt: number, curr?: string) => formatCurrency(amt, curr || currency);
 
   useEffect(() => {
     if (!user) return;
@@ -71,7 +74,18 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     };
   }, [user]);
 
-  const totalBalance = accounts.reduce((acc, curr) => acc + curr.currentBalance, 0);
+  const currencyTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    accounts.forEach(acc => {
+      const curr = acc.currency || 'INR';
+      totals[curr] = (totals[curr] || 0) + acc.currentBalance;
+    });
+    return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  }, [accounts]);
+
+  const totalBalanceConverted = accounts.reduce((acc, curr) => {
+    return acc + convertCurrency(curr.currentBalance, curr.currency || 'INR', currency);
+  }, 0);
 
   // Chart Data Processing
   const monthlyData = useMemo(() => {
@@ -93,13 +107,14 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
       const date = new Date(t.date);
       const key = `${date.getFullYear()}-${date.getMonth()}`;
       if (months[key]) {
-        if (t.type === 'income') months[key].income += t.amount;
-        else months[key].expense += t.amount;
+        const convertedAmt = convertCurrency(t.amount, t.currency || 'INR', currency);
+        if (t.type === 'income') months[key].income += convertedAmt;
+        else months[key].expense += convertedAmt;
       }
     });
 
     return Object.values(months);
-  }, [allTransactions]);
+  }, [allTransactions, currency]);
 
   const categoryData = useMemo(() => {
     const cats: { [key: string]: number } = {};
@@ -107,14 +122,15 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
       .filter(t => t.type === 'expense')
       .forEach(t => {
         const catName = categories.find(c => c.id === t.categoryId)?.name || 'Other';
-        cats[catName] = (cats[catName] || 0) + t.amount;
+        const convertedAmt = convertCurrency(t.amount, t.currency || 'INR', currency);
+        cats[catName] = (cats[catName] || 0) + convertedAmt;
       });
 
     return Object.entries(cats)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [allTransactions, categories]);
+  }, [allTransactions, categories, currency]);
 
   const dailyTrendData = useMemo(() => {
     const days: { [key: string]: number } = {};
@@ -133,7 +149,8 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
       .forEach(t => {
         const dateStr = t.date.split('T')[0];
         if (days[dateStr] !== undefined) {
-          days[dateStr] += t.amount;
+          const convertedAmt = convertCurrency(t.amount, t.currency || 'INR', currency);
+          days[dateStr] += convertedAmt;
         }
       });
 
@@ -141,7 +158,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
       date: new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
       amount
     }));
-  }, [allTransactions]);
+  }, [allTransactions, currency]);
 
   const getAccountIcon = (type: string) => {
     switch (type) {
@@ -192,13 +209,37 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Net Worth Total</span>
             </div>
           </div>
-          <div className={cn(
-            "text-2xl md:text-3xl lg:text-4xl font-black tracking-tighter leading-none mb-2 truncate",
-            totalBalance < 0 ? "text-red-500" : "text-slate-900"
-          )}>
-            {formatCurrency(totalBalance)}
+          <div className="space-y-4">
+            {currencyTotals.length > 0 ? currencyTotals.map(([curr, amount]) => (
+              <div key={curr}>
+                <div className={cn(
+                  "text-2xl md:text-3xl font-black tracking-tighter leading-none mb-1",
+                  amount < 0 ? "text-red-500" : "text-slate-900"
+                )}>
+                  {format(amount, curr)}
+                </div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter opacity-70">
+                  Balance in {curr}
+                </p>
+              </div>
+            )) : (
+              <div>
+                <div className="text-2xl md:text-3xl font-black text-slate-900 tracking-tighter leading-none mb-1">
+                  {format(0)}
+                </div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter opacity-70">No activity</p>
+              </div>
+            )}
           </div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter opacity-70">Current Liquid Assets</p>
+          
+          {currencyTotals.length > 1 && (
+            <div className="mt-6 pt-6 border-t border-slate-100">
+               <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Consolidated Total</p>
+               <p className="text-sm font-black text-blue-600 tracking-tight">
+                  {format(totalBalanceConverted)}
+               </p>
+            </div>
+          )}
           
           <div className="mt-8 flex items-center justify-between">
             <div className="flex -space-x-2">
@@ -247,7 +288,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
             <div>
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">MOM Usage</p>
               <p className="text-xl font-black text-slate-900 tracking-tight">
-                {formatCurrency(monthlyData[monthlyData.length - 1]?.expense || 0)}
+                {format(monthlyData[monthlyData.length - 1]?.expense || 0)}
               </p>
             </div>
             <div className="text-right">
@@ -292,7 +333,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                 {categoryData[0]?.name || 'N/A'}
               </p>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter truncate opacity-80">
-                {categoryData[0] ? formatCurrency(categoryData[0].value) : '$0.00'} this cycle
+                {categoryData[0] ? format(categoryData[0].value) : format(0)}
               </p>
             </div>
           </div>
@@ -348,7 +389,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                         return (
                           <div className="bg-slate-900 text-white p-3 rounded-xl shadow-2xl border border-slate-800 animate-in fade-in zoom-in duration-200">
                             <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">{payload[0].payload.date}</p>
-                            <p className="text-sm font-black tracking-tight">{formatCurrency(payload[0].value as number)}</p>
+                            <p className="text-sm font-black tracking-tight">{format(payload[0].value as number)}</p>
                           </div>
                         );
                       }
@@ -382,7 +423,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                  <div className="text-center">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">AGGREGATE</p>
                     <p className="text-xl font-black text-slate-900 tracking-tighter">
-                      {formatCurrency(categoryData.reduce((acc, curr) => acc + curr.value, 0))}
+                      {format(categoryData.reduce((acc, curr) => acc + curr.value, 0))}
                     </p>
                  </div>
               </div>
@@ -405,7 +446,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                         return (
                           <div className="bg-white p-3 rounded-xl shadow-2xl border border-slate-100 ring-4 ring-slate-50/50 animate-in fade-in duration-200">
                             <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{payload[0].name}</p>
-                            <p className="text-sm font-black text-slate-900">{formatCurrency(payload[0].value as number)}</p>
+                            <p className="text-sm font-black text-slate-900">{format(payload[0].value as number)}</p>
                           </div>
                         );
                       }
@@ -424,7 +465,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                       <span className="text-[11px] font-bold text-slate-600 truncate">{item.name}</span>
                    </div>
                    <div className="text-right shrink-0">
-                      <span className="text-[11px] font-black text-slate-900 tracking-tighter">{formatCurrency(item.value)}</span>
+                      <span className="text-[11px] font-black text-slate-900 tracking-tighter">{format(item.value)}</span>
                       <span className="text-[9px] font-black text-slate-400 ml-2 bg-slate-100 px-1 rounded">
                         {Math.round((item.value / (categoryData.reduce((a, b) => a + b.value, 0) || 1)) * 100)}%
                       </span>
@@ -452,11 +493,11 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                <div className="flex gap-8">
                   <div>
                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Total Earned</p>
-                    <p className="text-2xl font-black text-slate-900 tracking-tighter">{formatCurrency(monthlyData.reduce((a, b) => a + b.income, 0))}</p>
+                    <p className="text-2xl font-black text-slate-900 tracking-tighter">{format(monthlyData.reduce((a, b) => a + b.income, 0))}</p>
                   </div>
                   <div>
                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Total Spent</p>
-                    <p className="text-2xl font-black text-blue-600 tracking-tighter">{formatCurrency(monthlyData.reduce((a, b) => a + b.expense, 0))}</p>
+                    <p className="text-2xl font-black text-blue-600 tracking-tighter">{format(monthlyData.reduce((a, b) => a + b.expense, 0))}</p>
                   </div>
                </div>
             </div>
@@ -479,11 +520,11 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                               <div className="space-y-2">
                                 <p className="text-xs font-black flex justify-between gap-6">
                                   <span className="text-slate-500">Income:</span>
-                                  <span className="text-emerald-600">{formatCurrency(payload[0].value as number)}</span>
+                                  <span className="text-emerald-600">{format(payload[0].value as number)}</span>
                                 </p>
                                 <p className="text-xs font-black flex justify-between gap-6">
                                   <span className="text-slate-500">Expense:</span>
-                                  <span className="text-blue-600">{formatCurrency(payload[1].value as number)}</span>
+                                  <span className="text-blue-600">{format(payload[1].value as number)}</span>
                                 </p>
                               </div>
                             </div>

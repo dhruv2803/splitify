@@ -32,10 +32,16 @@ service cloud.firestore {
     }
 
     // Entity Validations
+    function isAdmin() {
+      return isSignedIn() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email']) &&
-             data.uid == request.auth.uid &&
-             data.email is string && data.email.size() <= 256;
+             (data.uid == request.auth.uid || isAdmin()) &&
+             data.email is string && data.email.size() <= 256 &&
+             (!data.keys().hasAny(['currency']) || (data.currency is string && data.currency.size() == 3));
     }
 
     function isValidAccount(data) {
@@ -81,47 +87,49 @@ service cloud.firestore {
 
     // Collection Matches
     match /users/{userId} {
-      allow get: if isOwner(userId);
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
       allow create: if isSignedIn() && isValidUser(incoming());
-      allow update: if isOwner(userId) && isValidUser(incoming()) && 
-                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL']);
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUser(incoming()) && 
+                    (isAdmin() || incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'currency']));
     }
 
     match /accounts/{accountId} {
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow get: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn() && isValidAccount(incoming());
-      allow update: if isSignedIn() && existing().userId == request.auth.uid && isValidAccount(incoming());
-      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+      allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid && isValidAccount(incoming()));
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
     }
 
     match /categories/{categoryId} {
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow get: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn() && isValidCategory(incoming());
-      allow update: if isSignedIn() && existing().userId == request.auth.uid && isValidCategory(incoming());
-      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+      allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid && isValidCategory(incoming()));
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
     }
 
     match /transactions/{transactionId} {
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow get: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn() && isValidTransaction(incoming());
-      allow update: if isSignedIn() && existing().userId == request.auth.uid && isValidTransaction(incoming());
-      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+      allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid && isValidTransaction(incoming()));
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
     }
 
     match /groups/{groupId} {
-      allow list: if isSignedIn() && request.auth.uid in resource.data.members;
-      allow get: if isSignedIn() && request.auth.uid in resource.data.members;
+      allow list: if isAdmin() || (isSignedIn() && request.auth.uid in resource.data.members);
+      allow get: if isAdmin() || (isSignedIn() && request.auth.uid in resource.data.members);
       allow create: if isSignedIn() && isValidGroup(incoming());
-      allow update: if isSignedIn() && request.auth.uid in existing().members && isValidGroup(incoming());
-      allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow update: if isAdmin() || (isSignedIn() && request.auth.uid in existing().members && isValidGroup(incoming()));
+      allow delete: if isAdmin() || (isSignedIn() && existing().ownerId == request.auth.uid);
     }
 
     match /groupExpenses/{expenseId} {
       function canAccessGroup(groupId) {
-        return get(/databases/$(database)/documents/groups/$(groupId)).data.members.hasAny([request.auth.uid]);
+        return isAdmin() || (exists(/databases/$(database)/documents/groups/$(groupId)) && 
+               get(/databases/$(database)/documents/groups/$(groupId)).data.members.hasAny([request.auth.uid]));
       }
       
       allow list: if isSignedIn() && canAccessGroup(resource.data.groupId);

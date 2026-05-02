@@ -1,8 +1,21 @@
+export const CURRENCIES = [
+  { code: 'USD', name: 'US Dollar', symbol: '$' },
+  { code: 'EUR', name: 'Euro', symbol: '€' },
+  { code: 'GBP', name: 'British Pound', symbol: '£' },
+  { code: 'JPY', name: 'Japanese Yen', symbol: '¥' },
+  { code: 'INR', name: 'Indian Rupee', symbol: '₹' },
+  { code: 'CAD', name: 'Canadian Dollar', symbol: 'C$' },
+  { code: 'AUD', name: 'Australian Dollar', symbol: 'A$' },
+  { code: 'BRL', name: 'Brazilian Real', symbol: 'R$' },
+];
+
 export interface UserProfile {
   uid: string;
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
+  currency?: string;
+  isAdmin?: boolean;
   createdAt: string;
 }
 
@@ -17,6 +30,7 @@ export interface Account {
   userId: string;
   color: string;
   icon: string;
+  currency?: string;
   createdAt: string;
 }
 
@@ -40,6 +54,7 @@ export interface Transaction {
   date: string;
   description: string;
   userId: string;
+  currency?: string;
   groupId?: string;
 }
 
@@ -66,4 +81,5 @@ export interface GroupExpense {
   date: string;
   splits: Split[];
   userId: string;
+  currency?: string;
 }

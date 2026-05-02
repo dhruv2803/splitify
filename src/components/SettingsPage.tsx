@@ -1,22 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, getDocs, writeBatch, updateDoc } from 'firebase/firestore';
 import { useAuth } from './AuthProvider';
-import { Category, TransactionType } from '../types';
+import { Category, TransactionType, CURRENCIES } from '../types';
 import { cn } from '../lib/utils';
-import { Plus, Trash2, X, Tag, ShoppingBag, Coffee, Car, Home, Heart, MoreHorizontal, User, Smartphone, Layout, AlertTriangle, Loader2 } from 'lucide-react';
+import { Plus, Trash2, X, Tag, ShoppingBag, Coffee, Car, Home, Heart, MoreHorizontal, User, Smartphone, Layout, AlertTriangle, Loader2, Globe } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function SettingsPage() {
-  const { user, logout } = useAuth();
+  const { user, profile, logout } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isUpdatingCurrency, setIsUpdatingCurrency] = useState(false);
   
   // Form State
   const [name, setName] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
+
+  const handleCurrencyChange = async (currencyCode: string) => {
+    if (!user) return;
+    setIsUpdatingCurrency(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        currency: currencyCode,
+      });
+      toast.success(`Default currency set to ${currencyCode}`);
+    } catch (err) {
+      toast.error('Failed to update currency');
+    } finally {
+      setIsUpdatingCurrency(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -65,20 +81,32 @@ export function SettingsPage() {
 
     try {
       const collectionConfigs = [
+        { name: 'groupExpenses', field: 'paidBy' },
+        { name: 'groups', field: 'ownerId' },
         { name: 'transactions', field: 'userId' },
         { name: 'accounts', field: 'userId' },
-        { name: 'categories', field: 'userId' },
-        { name: 'groups', field: 'ownerId' },
-        { name: 'groupExpenses', field: 'paidBy' }
+        { name: 'categories', field: 'userId' }
       ];
       
       for (const config of collectionConfigs) {
         const q = query(collection(db, config.name), where(config.field, '==', user.uid));
-        const snapshot = await getDocs(q);
+        
+        let snapshot;
+        try {
+          snapshot = await getDocs(q);
+        } catch (error: any) {
+          const errInfo = {
+            error: error.message,
+            operationType: 'get',
+            path: config.name,
+            authInfo: { userId: user.uid, email: user.email }
+          };
+          console.error('Purge Fetch Error:', JSON.stringify(errInfo));
+          throw new Error(JSON.stringify(errInfo));
+        }
         
         if (snapshot.empty) continue;
 
-        // Firestore batch has a limit of 500 operations
         const docs = snapshot.docs;
         for (let i = 0; i < docs.length; i += 500) {
           const batch = writeBatch(db);
@@ -86,7 +114,19 @@ export function SettingsPage() {
           chunk.forEach((doc) => {
             batch.delete(doc.ref);
           });
-          await batch.commit();
+          
+          try {
+            await batch.commit();
+          } catch (error: any) {
+            const errInfo = {
+              error: error.message,
+              operationType: 'write',
+              path: config.name,
+              authInfo: { userId: user.uid, email: user.email }
+            };
+            console.error('Purge Batch Error:', JSON.stringify(errInfo));
+            throw new Error(JSON.stringify(errInfo));
+          }
         }
       }
 
@@ -94,11 +134,15 @@ export function SettingsPage() {
       setIsDeleteConfirmOpen(false);
     } catch (err: any) {
       console.error('Purge error:', err);
-      // Detailed error for common index failures
-      if (err?.message?.includes('index')) {
-        toast.error('System indexing in progress. Please try again in 1 minute.', { id: toastId });
-      } else {
-        toast.error('Failed to clear some data: ' + (err?.message || 'Unknown error'), { id: toastId });
+      try {
+        const parsed = JSON.parse(err.message);
+        toast.error(`Clear failed: ${parsed.error}`, { id: toastId });
+      } catch {
+        if (err?.message?.includes('index')) {
+          toast.error('System indexing in progress. Please try again in 1 minute.', { id: toastId });
+        } else {
+          toast.error('Failed to clear some data: ' + (err?.message || 'Unknown error'), { id: toastId });
+        }
       }
     } finally {
       setIsClearing(false);
@@ -174,6 +218,49 @@ export function SettingsPage() {
 
         {/* Configuration */}
         <div className="lg:col-span-2 space-y-8">
+          <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+             <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                   <Globe className="h-4 w-4 text-slate-400" />
+                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Global Currency</h3>
+                </div>
+                {isUpdatingCurrency && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+             </div>
+             <div className="p-6">
+                <p className="text-xs text-slate-500 mb-6 font-medium leading-relaxed">
+                   Choose your default currency for multi-currency support. All summaries and charts will use this currency for aggregation.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                   {CURRENCIES.map((curr) => (
+                      <button
+                         key={curr.code}
+                         onClick={() => handleCurrencyChange(curr.code)}
+                         disabled={isUpdatingCurrency}
+                         className={cn(
+                            "flex flex-col items-center justify-center p-4 rounded-xl border transition-all hover:bg-slate-50",
+                            profile?.currency === curr.code 
+                               ? "bg-blue-50 border-blue-200 ring-2 ring-blue-500/10 shadow-sm" 
+                               : "bg-white border-slate-200"
+                         )}
+                      >
+                         <span className={cn(
+                            "text-lg font-black mb-1 transition-transform",
+                            profile?.currency === curr.code ? "text-blue-600 scale-110" : "text-slate-400"
+                         )}>
+                            {curr.symbol}
+                         </span>
+                         <span className={cn(
+                            "text-[10px] font-black uppercase tracking-widest",
+                            profile?.currency === curr.code ? "text-blue-600" : "text-slate-500"
+                         )}>
+                            {curr.code}
+                         </span>
+                      </button>
+                   ))}
+                </div>
+             </div>
+          </section>
+
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
              <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
                 <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Transaction Categories</h3>

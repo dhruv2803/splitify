@@ -2,22 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { useAuth } from './AuthProvider';
-import { Account, AccountType } from '../types';
+import { Account, AccountType, CURRENCIES } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
 import { Plus, Wallet, CreditCard, Landmark, X, Trash2, Edit2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function AccountsPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  
+  const currency = profile?.currency || 'INR';
+  const format = (amt: number) => formatCurrency(amt, currency);
   
   // Form State
   const [name, setName] = useState('');
   const [type, setType] = useState<AccountType>('wallet');
   const [initialBalance, setInitialBalance] = useState('0');
   const [color, setColor] = useState('bg-blue-600');
+  const [accountCurrency, setAccountCurrency] = useState(profile?.currency || 'INR');
+
+  useEffect(() => {
+    if (profile?.currency && !accountCurrency) {
+      setAccountCurrency(profile.currency);
+    }
+  }, [profile]);
 
   const colors = [
     'bg-blue-600', 'bg-emerald-600', 'bg-rose-600', 'bg-amber-600', 
@@ -43,7 +53,10 @@ export function AccountsPage() {
 
       if (editingAccount) {
         await updateDoc(doc(db, 'accounts', editingAccount.id), {
-          name, type, color,
+          name, 
+          type, 
+          color,
+          currency: accountCurrency
         });
         toast.success('Account updated');
       } else {
@@ -54,6 +67,7 @@ export function AccountsPage() {
           currentBalance: adjustedBalance,
           userId: user.uid,
           color,
+          currency: accountCurrency,
           createdAt: serverTimestamp(),
         });
         toast.success('Account created');
@@ -79,6 +93,7 @@ export function AccountsPage() {
     setType(account.type);
     setInitialBalance(account.initialBalance.toString());
     setColor(account.color);
+    setAccountCurrency(account.currency || profile?.currency || 'INR');
     setIsModalOpen(true);
   };
 
@@ -145,7 +160,7 @@ export function AccountsPage() {
                   "text-3xl font-black tracking-tighter leading-none mb-1",
                   account.currentBalance < 0 ? "text-red-500" : "text-slate-900"
                 )}>
-                  {formatCurrency(account.currentBalance)}
+                  {formatCurrency(account.currentBalance, account.currency || currency)}
                 </p>
                 <div className="mt-6">
                    <div className="flex items-center justify-between mb-2">
@@ -215,38 +230,53 @@ export function AccountsPage() {
                 ))}
               </div>
 
-              {!editingAccount && (
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                    {type === 'card' ? 'Initial Outstanding Balance' : 'Initial Balance'}
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xl font-mono">$</span>
-                    <input 
-                      required
-                      type="number"
-                      step="0.01"
-                      value={initialBalance}
-                      onChange={e => setInitialBalance(e.target.value)}
-                      className={cn(
-                        "w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pl-10 text-slate-900 font-bold focus:outline-none focus:ring-2 transition-all text-xl font-mono",
-                        type === 'card' ? "focus:ring-red-500/20" : "focus:ring-blue-500/20"
-                      )}
-                      placeholder="0.00"
-                    />
+              <div className="space-y-6">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                      {type === 'card' ? 'Initial Outstanding' : 'Initial Balance'}
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xl font-mono">
+                        {CURRENCIES.find(c => c.code === accountCurrency)?.symbol || '$'}
+                      </span>
+                      <input 
+                        required
+                        disabled={!!editingAccount}
+                        type="number"
+                        step="0.01"
+                        value={initialBalance}
+                        onChange={e => setInitialBalance(e.target.value)}
+                        className={cn(
+                          "w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pl-10 text-slate-900 font-bold focus:outline-none focus:ring-2 transition-all text-xl font-mono disabled:opacity-50",
+                          type === 'card' ? "focus:ring-red-500/20" : "focus:ring-blue-500/20"
+                        )}
+                        placeholder="0.00"
+                      />
+                    </div>
                   </div>
-                  {type === 'card' && (
-                    <p className="mt-2 text-[10px] text-red-500 font-bold uppercase tracking-tighter bg-red-50 p-2 rounded border border-red-100 italic">
-                      Note: This is treated as debt and will reduce your net worth.
-                    </p>
-                  )}
-                  {type !== 'card' && (
-                    <p className="mt-2 text-[10px] text-slate-400 font-medium italic">
-                      Starting amount available in this account.
-                    </p>
-                  )}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Curr</label>
+                    <select 
+                      value={accountCurrency}
+                      onChange={e => setAccountCurrency(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                    </select>
+                  </div>
                 </div>
-              )}
+                {type === 'card' && !editingAccount && (
+                  <p className="mt-2 text-[10px] text-red-500 font-bold uppercase tracking-tighter bg-red-50 p-2 rounded border border-red-100 italic">
+                    Note: This is treated as debt and will reduce your net worth.
+                  </p>
+                )}
+                {type !== 'card' && !editingAccount && (
+                  <p className="mt-2 text-[10px] text-slate-400 font-medium italic">
+                    Starting amount available in this account.
+                  </p>
+                )}
+              </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Theme Color</label>

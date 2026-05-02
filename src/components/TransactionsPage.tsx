@@ -2,17 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, runTransaction, orderBy } from 'firebase/firestore';
 import { useAuth } from './AuthProvider';
-import { Transaction, Account, Category, TransactionType } from '../types';
+import { Transaction, Account, Category, TransactionType, CURRENCIES } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
 import { Plus, Minus, X, Calendar, ArrowUpRight, ArrowDownLeft, Trash2, Filter, Receipt } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function TransactionsPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  const currency = profile?.currency || 'INR';
+  const format = (amt: number) => formatCurrency(amt, currency);
   
   // Form State
   const [type, setType] = useState<TransactionType>('expense');
@@ -21,6 +24,13 @@ export function TransactionsPage() {
   const [categoryId, setCategoryId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
+  const [transactionCurrency, setTransactionCurrency] = useState(profile?.currency || 'INR');
+
+  useEffect(() => {
+    if (profile?.currency && !transactionCurrency) {
+      setTransactionCurrency(profile.currency);
+    }
+  }, [profile]);
 
   useEffect(() => {
     if (!user) return;
@@ -82,6 +92,7 @@ export function TransactionsPage() {
           date,
           description,
           userId: user.uid,
+          currency: transactionCurrency,
           createdAt: serverTimestamp(),
         });
 
@@ -187,7 +198,7 @@ export function TransactionsPage() {
                         "text-base md:text-xl font-black tracking-tighter block leading-none mb-1",
                         t.type === 'income' ? "text-emerald-600" : "text-slate-900"
                       )}>
-                        {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
+                        {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount, t.currency || 'INR')}
                       </span>
                       <span className="text-[9px] text-slate-300 font-black uppercase tracking-[0.2em]">Verified</span>
                     </div>
@@ -239,20 +250,34 @@ export function TransactionsPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Amount</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xl">$</span>
-                  <input 
-                    autoFocus
-                    required
-                    type="number"
-                    step="0.01"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pl-8 text-2xl font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                    placeholder="0.00"
-                  />
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Amount</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xl">
+                      {CURRENCIES.find(c => c.code === transactionCurrency)?.symbol || '$'}
+                    </span>
+                    <input 
+                      autoFocus
+                      required
+                      type="number"
+                      step="0.01"
+                      value={amount}
+                      onChange={e => setAmount(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pl-8 text-2xl font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Curr</label>
+                  <select 
+                    value={transactionCurrency}
+                    onChange={e => setTransactionCurrency(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                  </select>
                 </div>
               </div>
 

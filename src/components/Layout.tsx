@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Wallet, Receipt, Users, Settings, LogOut } from 'lucide-react';
+import { Home, Wallet, Receipt, Users, Settings, LogOut, Shield } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { cn } from '../lib/utils';
 import { motion } from 'motion/react';
@@ -11,7 +11,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
-  const { logout, user } = useAuth();
+  const { logout, user, profile } = useAuth();
 
   const menuItems = [
     { id: 'dashboard', icon: Home, label: 'Dashboard' },
@@ -21,10 +21,14 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
     { id: 'settings', icon: Settings, label: 'Settings' },
   ];
 
+  if (profile?.isAdmin) {
+    menuItems.push({ id: 'admin', icon: Shield, label: 'Admin' });
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900">
+    <div className="min-h-screen md:h-screen md:overflow-hidden bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900">
       {/* Sidebar for Desktop */}
-      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 shadow-sm">
+      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 shadow-sm h-full shrink-0">
         <div className="p-8">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center relative">

@@ -2,18 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, getDocs, orderBy } from 'firebase/firestore';
 import { useAuth } from './AuthProvider';
-import { Group, GroupExpense, Split, UserProfile } from '../types';
+import { Group, GroupExpense, Split, UserProfile, CURRENCIES } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
 import { Plus, Users, X, MoreVertical, CreditCard, ChevronRight, UserPlus, Receipt } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function GroupsPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [expenses, setExpenses] = useState<GroupExpense[]>([]);
   const [isNewGroupModalOpen, setIsNewGroupModalOpen] = useState(false);
   const [isNewExpenseModalOpen, setIsNewExpenseModalOpen] = useState(false);
+
+  const currency = profile?.currency || 'INR';
+  const format = (amt: number) => formatCurrency(amt, currency);
 
   // Form State - Group
   const [groupName, setGroupName] = useState('');
@@ -23,6 +26,13 @@ export function GroupsPage() {
   // Form State - Expense
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseCurrency, setExpenseCurrency] = useState(profile?.currency || 'INR');
+
+  useEffect(() => {
+    if (profile?.currency && !expenseCurrency) {
+      setExpenseCurrency(profile.currency);
+    }
+  }, [profile]);
 
   useEffect(() => {
     if (!user) return;
@@ -84,6 +94,7 @@ export function GroupsPage() {
         groupId: selectedGroup.id,
         date: new Date().toISOString(),
         splits,
+        currency: expenseCurrency,
         userId: user.uid, // recorded for rules
       });
 
@@ -149,7 +160,7 @@ export function GroupsPage() {
              <div className="absolute top-0 right-0 -tr-4 -tt-4 w-24 h-24 bg-blue-50 rounded-full blur-2xl"></div>
              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Total Group Spend</h3>
              <div className="text-3xl font-black text-slate-900 tracking-tight mb-2">
-                {formatCurrency(expenses.reduce((acc, curr) => acc + curr.totalAmount, 0))}
+                {format(expenses.reduce((acc, curr) => acc + curr.totalAmount, 0))}
              </div>
              <div className="flex items-center gap-2 text-[10px] font-bold text-blue-600 bg-blue-50 w-fit px-2 py-1 rounded">
                 <Users className="h-3 w-3" />
@@ -175,7 +186,7 @@ export function GroupsPage() {
                         "text-xs font-bold",
                         b.balance > 0 ? "text-green-600" : b.balance < 0 ? "text-red-500" : "text-slate-400"
                       )}>
-                        {b.balance > 0 ? `+${formatCurrency(b.balance)}` : b.balance < 0 ? `-${formatCurrency(Math.abs(b.balance))}` : '0.00'}
+                        {b.balance > 0 ? `+${format(b.balance)}` : b.balance < 0 ? `-${format(Math.abs(b.balance))}` : format(0)}
                       </span>
                     </div>
                   ))
@@ -205,8 +216,8 @@ export function GroupsPage() {
                     <p className="text-[10px] text-slate-400 uppercase font-semibold">Paid by {e.paidBy === user?.uid ? 'You' : 'Member'} • {new Date(e.date).toLocaleDateString()}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-black text-slate-900 tracking-tight">{formatCurrency(e.totalAmount)}</p>
-                    <p className="text-[9px] text-blue-600 font-bold uppercase tracking-tighter">Your share: {formatCurrency(e.totalAmount / (selectedGroup.members.length || 1))}</p>
+                    <p className="text-sm font-black text-slate-900 tracking-tight">{formatCurrency(e.totalAmount, e.currency || currency)}</p>
+                    <p className="text-[9px] text-blue-600 font-bold uppercase tracking-tighter">Your share: {formatCurrency(e.totalAmount / (selectedGroup.members.length || 1), e.currency || currency)}</p>
                   </div>
                 </div>
               ))
@@ -236,20 +247,36 @@ export function GroupsPage() {
                     placeholder="e.g. Dinner, AirBnB Fees"
                   />
                 </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Total Amount</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xl">$</span>
-                    <input 
-                      required type="number" step="0.01"
-                      value={expenseAmount}
-                      onChange={e => setExpenseAmount(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pl-10 text-2xl font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                      placeholder="0.00"
-                    />
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Total Amount</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xl">
+                        {CURRENCIES.find(c => c.code === expenseCurrency)?.symbol || '$'}
+                      </span>
+                      <input 
+                        required type="number" step="0.01"
+                        value={expenseAmount}
+                        onChange={e => setExpenseAmount(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pl-10 text-2xl font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        placeholder="0.00"
+                      />
+                    </div>
                   </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Curr</label>
+                    <select 
+                      value={expenseCurrency}
+                      onChange={e => setExpenseCurrency(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
                   <p className="text-[10px] text-slate-400 mt-3 ml-1 font-medium bg-slate-50 p-2 rounded border border-slate-100">
-                    Will be split equally between {selectedGroup.members.length} members ({formatCurrency((parseFloat(expenseAmount) || 0) / selectedGroup.members.length)} each).
+                    Will be split equally between {selectedGroup.members.length} members ({formatCurrency((parseFloat(expenseAmount) || 0) / selectedGroup.members.length, expenseCurrency)} each).
                   </p>
                 </div>
                 <button 

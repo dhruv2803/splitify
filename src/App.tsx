@@ -12,11 +12,12 @@ import { AccountsPage } from './components/AccountsPage';
 import { TransactionsPage } from './components/TransactionsPage';
 import { GroupsPage } from './components/GroupsPage';
 import { SettingsPage } from './components/SettingsPage';
+import { AdminPage } from './components/AdminPage';
 import { LandingPage } from './components/LandingPage';
 import { AnimatePresence, motion } from 'motion/react';
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, loading, profile } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
 
   if (loading) {
@@ -47,6 +48,8 @@ function AppContent() {
         return <GroupsPage />;
       case 'settings':
         return <SettingsPage />;
+      case 'admin':
+        return profile?.isAdmin ? <AdminPage /> : <Dashboard setActiveTab={setActiveTab} />;
       default:
         return <Dashboard setActiveTab={setActiveTab} />;
     }
