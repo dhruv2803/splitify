@@ -40,39 +40,11 @@ export function SettingsPage() {
     const unsub = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
       setCategories(data);
-      
-      // Seed default categories if none exist
-      if (data.length === 0 && snapshot.metadata.fromCache === false) {
-        seedDefaultCategories();
-      }
     });
     return unsub;
   }, [user]);
 
-  const seedDefaultCategories = async () => {
-    if (!user) return;
-    const defaults = [
-      { name: 'Food', type: 'expense', icon: 'Coffee' },
-      { name: 'Shopping', type: 'expense', icon: 'ShoppingBag' },
-      { name: 'Transport', type: 'expense', icon: 'Car' },
-      { name: 'Housing', type: 'expense', icon: 'Home' },
-      { name: 'Salary', type: 'income', icon: 'Tag' },
-      { name: 'Bonus', type: 'income', icon: 'Heart' },
-    ];
 
-    try {
-      for (const cat of defaults) {
-        await addDoc(collection(db, 'categories'), {
-          ...cat,
-          userId: user.uid,
-          isDefault: true,
-          createdAt: serverTimestamp()
-        });
-      }
-    } catch (err) {
-      console.error('Failed to seed categories', err);
-    }
-  };
 
   const handleClearData = async () => {
     if (!user) return;
@@ -378,7 +350,7 @@ export function SettingsPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl border border-slate-200">
+          <div id="modal-add-category" className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-xl font-bold text-slate-900 tracking-tight">New Category</h3>
               <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg transition-colors">

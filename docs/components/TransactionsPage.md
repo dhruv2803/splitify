@@ -10,7 +10,9 @@ Provides a "Chronicle" or historical ledger of all individual financial activiti
     - Adding income adds to the account balance.
     - Deleting a transaction automatically reverts the balance change in the linked account.
 - **Data Filtering**: Displays transactions in descending chronological order.
-- **Empty State**: Displays a custom "Null Sector" view when no transactions exist, encouraging manual entry.
+- **Empty State**: 
+    - **Configuration Required**: If no accounts or categories exist, displays a warning guiding the user to complete their setup.
+    - **Null Sector**: If setup is complete but no transactions exist, displays a placeholder encouraging manual entry.
 
 ## Transaction Form
 - **Type Toggle**: Large, accessible buttons to switch between `Expense` and `Income`.

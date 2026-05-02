@@ -16,6 +16,7 @@ interface UserProfile {
   photoURL: string | null;
   currency?: string; // Default currency for aggregation (e.g., 'INR', 'USD')
   isAdmin?: boolean; // Admin privilege flag
+  onboardingCompleted?: boolean; // Track if user has finished the tutorial
   createdAt: string; // ISO string or serverTimestamp
 }
 ```

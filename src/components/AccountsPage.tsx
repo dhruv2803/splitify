@@ -189,7 +189,7 @@ export function AccountsPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={closeModal} />
-          <div className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl overflow-hidden border border-slate-200">
+          <div id="modal-add-account" className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl overflow-hidden border border-slate-200">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-xl font-bold text-slate-900 tracking-tight">
                 {editingAccount ? 'Edit Account' : 'Create Account'}

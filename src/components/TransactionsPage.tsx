@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot, addDoc, serverTimestamp, deleteDo
 import { useAuth } from './AuthProvider';
 import { Transaction, Account, Category, TransactionType, CURRENCIES } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
-import { Plus, Minus, X, Calendar, ArrowUpRight, ArrowDownLeft, Trash2, Filter, Receipt } from 'lucide-react';
+import { Plus, Minus, X, Calendar, ArrowUpRight, ArrowDownLeft, Trash2, Filter, Receipt, AlertTriangle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function TransactionsPage() {
@@ -165,12 +165,36 @@ export function TransactionsPage() {
 
         {transactions.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-            <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-6 shadow-inner">
-               <Receipt className="h-10 w-10 text-slate-200" />
-            </div>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mb-2">Null Sector</p>
-            <p className="text-slate-400 font-medium italic text-sm max-w-xs">No activity has been piped into the ledger for this window.</p>
-            <button onClick={() => setIsModalOpen(true)} className="mt-8 bg-blue-50 text-blue-600 px-6 py-2 rounded-full font-black text-xs uppercase tracking-widest hover:bg-blue-100 transition-all">Manual Entry &rarr;</button>
+            {accounts.length === 0 || categories.length === 0 ? (
+              <>
+                <div className="w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center mb-6 shadow-inner">
+                   <AlertTriangle className="h-10 w-10 text-amber-500" />
+                </div>
+                <p className="text-amber-600 font-bold uppercase tracking-widest text-[10px] mb-2">Configuration Required</p>
+                <p className="text-slate-400 font-medium italic text-sm max-w-xs mb-4">To begin logging activity, you must first initialize at least one account and one category.</p>
+                <div className="flex flex-wrap justify-center gap-3 mt-4">
+                  {accounts.length === 0 && (
+                    <div className="px-4 py-2 bg-slate-100 rounded-xl text-[10px] font-black text-slate-500 uppercase tracking-widest border border-slate-200">
+                      Missing Accounts
+                    </div>
+                  )}
+                  {categories.length === 0 && (
+                    <div className="px-4 py-2 bg-slate-100 rounded-xl text-[10px] font-black text-slate-500 uppercase tracking-widest border border-slate-200">
+                      Missing Categories
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-6 shadow-inner">
+                   <Receipt className="h-10 w-10 text-slate-200" />
+                </div>
+                <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mb-2">Null Sector</p>
+                <p className="text-slate-400 font-medium italic text-sm max-w-xs">No activity has been piped into the ledger for this window.</p>
+                <button onClick={() => setIsModalOpen(true)} className="mt-8 bg-blue-50 text-blue-600 px-6 py-2 rounded-full font-black text-xs uppercase tracking-widest hover:bg-blue-100 transition-all">Manual Entry &rarr;</button>
+              </>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-slate-50">
@@ -221,7 +245,7 @@ export function TransactionsPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={closeModal} />
-          <div className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl border border-slate-200">
+          <div id="modal-add-transaction" className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-xl font-bold text-slate-900 tracking-tight">Record Transaction</h3>
               <button onClick={closeModal} className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg transition-colors">

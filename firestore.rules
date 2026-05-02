@@ -91,7 +91,7 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create: if isSignedIn() && isValidUser(incoming());
       allow update: if (isOwner(userId) || isAdmin()) && isValidUser(incoming()) && 
-                    (isAdmin() || incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'currency']));
+                    (isAdmin() || incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'currency', 'onboardingCompleted']));
     }
 
     match /accounts/{accountId} {
@@ -119,8 +119,8 @@ service cloud.firestore {
     }
 
     match /groups/{groupId} {
-      allow list: if isAdmin() || (isSignedIn() && request.auth.uid in resource.data.members);
-      allow get: if isAdmin() || (isSignedIn() && request.auth.uid in resource.data.members);
+      allow list: if isAdmin() || (isSignedIn() && (resource.data.ownerId == request.auth.uid || request.auth.uid in resource.data.members));
+      allow get: if isAdmin() || (isSignedIn() && (resource.data.ownerId == request.auth.uid || request.auth.uid in resource.data.members));
       allow create: if isSignedIn() && isValidGroup(incoming());
       allow update: if isAdmin() || (isSignedIn() && request.auth.uid in existing().members && isValidGroup(incoming()));
       allow delete: if isAdmin() || (isSignedIn() && existing().ownerId == request.auth.uid);
@@ -132,8 +132,8 @@ service cloud.firestore {
                get(/databases/$(database)/documents/groups/$(groupId)).data.members.hasAny([request.auth.uid]));
       }
       
-      allow list: if isSignedIn() && canAccessGroup(resource.data.groupId);
-      allow get: if isSignedIn() && canAccessGroup(resource.data.groupId);
+      allow list: if isSignedIn() && (resource.data.paidBy == request.auth.uid || canAccessGroup(resource.data.groupId));
+      allow get: if isSignedIn() && (resource.data.paidBy == request.auth.uid || canAccessGroup(resource.data.groupId));
       allow create: if isSignedIn() && isValidGroupExpense(incoming()) && canAccessGroup(incoming().groupId);
       allow update: if isSignedIn() && canAccessGroup(existing().groupId) && isValidGroupExpense(incoming());
       allow delete: if isSignedIn() && (existing().paidBy == request.auth.uid || canAccessGroup(existing().groupId));

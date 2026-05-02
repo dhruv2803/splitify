@@ -41,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 displayName: user.displayName,
                 photoURL: user.photoURL,
                 currency: 'INR',
+                onboardingCompleted: false,
                 createdAt: serverTimestamp(),
               }).catch(err => {
                 console.error("Error setting initial profile", err);

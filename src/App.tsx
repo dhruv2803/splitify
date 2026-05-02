@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './components/AuthProvider';
 import { Toaster } from 'react-hot-toast';
 import { Layout } from './components/Layout';
@@ -22,13 +22,19 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isTourOpen, setIsTourOpen] = useState(false);
 
+  const hasAutoStarted = useRef(false);
+
   useEffect(() => {
-    if (profile && profile.onboardingCompleted === undefined) {
+    const hasSeenTour = user ? localStorage.getItem(`onboarding_seen_${user.uid}`) : null;
+    
+    if (profile?.onboardingCompleted === false && !isTourOpen && !hasAutoStarted.current && !hasSeenTour) {
+      console.log("Auto-starting tour for user:", user?.uid, "Profile:", profile);
+      hasAutoStarted.current = true;
       // Auto start for brand new users
       const timer = setTimeout(() => setIsTourOpen(true), 1500);
       return () => clearTimeout(timer);
     }
-  }, [profile]);
+  }, [profile, isTourOpen, user]);
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-gray-50">

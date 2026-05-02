@@ -5,6 +5,8 @@ Splitify is a modern, high-performance expense management and bill-splitting app
 ## Core Tech Stack
 - **Frontend**: React (with Vite and TypeScript)
 - **Styling**: TailwindCSS (for utility-first styling) + Vanilla CSS (for design tokens)
+- **Environment Config**: Vite `.env` system (Separated Local/Production databases)
+- **CI/CD**: GitHub Actions -> GCP Cloud Run (Multi-stage Docker build)
 - **Animations**: `motion/react` (Framer Motion)
 - **Backend/Database**: Firebase (Authentication, Firestore)
 - **Data Visualization**: `recharts`
@@ -20,6 +22,7 @@ Splitify is a modern, high-performance expense management and bill-splitting app
 - **Multi-Currency**: Global currency selection with automatic conversion for dashboards and summaries.
 - **Admin Tools**: User management, system stats, and data migration tools for legacy records.
 - **Data Privacy**: Feature to permanently clear personal data from the system.
+- **Interactive Onboarding**: Guided tour for new users with reactive positioning and persistent status tracking.
 
 ## Application Architecture
 - **State Management**: The app uses React Context via `AuthProvider` to manage user sessions and profile data. Most page-level data is managed via Firestore real-time snapshots (`onSnapshot`).

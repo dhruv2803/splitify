@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './AuthProvider';
 import { db } from '../lib/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { X, ChevronRight, ChevronLeft, Sparkles, Target } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { toast } from 'react-hot-toast';
 
 interface Step {
   targetId: string;
@@ -12,6 +13,7 @@ interface Step {
   content: string;
   tab?: string;
   position?: 'top' | 'bottom' | 'left' | 'right';
+  altTargetId?: string;
 }
 
 const TOUR_STEPS: Step[] = [
@@ -27,21 +29,24 @@ const TOUR_STEPS: Step[] = [
     title: 'Organize your spending',
     content: 'First, set up custom categories for your income and expenses to keep your data clean.',
     tab: 'settings',
-    position: 'left'
+    position: 'left',
+    altTargetId: 'modal-add-category'
   },
   {
     targetId: 'btn-add-account',
     title: 'Connect your funding',
     content: 'Add your wallets, bank accounts, or credit cards to track your liquid assets in real-time.',
     tab: 'accounts',
-    position: 'left'
+    position: 'left',
+    altTargetId: 'modal-add-account'
   },
   {
     targetId: 'btn-add-transaction',
     title: 'Log your activity',
     content: 'Record daily expenses or income. Your account balances will reconcile automatically.',
     tab: 'transactions',
-    position: 'left'
+    position: 'left',
+    altTargetId: 'modal-add-transaction'
   },
   {
     targetId: 'chart-momentum',
@@ -71,6 +76,85 @@ export function OnboardingTour({ activeTab, setActiveTab, isOpen, onClose }: Onb
   const [currentStep, setCurrentStep] = useState(0);
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0, height: 0 });
   const [isReady, setIsReady] = useState(false);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({ opacity: 0 });
+  const [arrowStyle, setArrowStyle] = useState<React.CSSProperties>({});
+
+  // Reset positioning when step changes
+  useEffect(() => {
+    setTooltipStyle(prev => ({ ...prev, opacity: 0 }));
+  }, [currentStep]);
+
+  useEffect(() => {
+    if (!isReady || !tooltipRef.current) return;
+
+    const step = TOUR_STEPS[currentStep];
+    const tooltip = tooltipRef.current;
+    const rect = tooltip.getBoundingClientRect();
+    const tW = rect.width;
+    const tH = rect.height;
+    
+    const padding = 16;
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+
+    let left = 0;
+    let top = 0;
+
+    // Calculate ideal position
+    if (step.position === 'top') {
+      left = coords.left + coords.width / 2 - tW / 2;
+      top = coords.top - tH - 16;
+    } else if (step.position === 'bottom') {
+      left = coords.left + coords.width / 2 - tW / 2;
+      top = coords.top + coords.height + 16;
+    } else if (step.position === 'left') {
+      left = coords.left - tW - 16;
+      top = coords.top + coords.height / 2 - tH / 2;
+    } else { // right
+      left = coords.left + coords.width + 16;
+      top = coords.top + coords.height / 2 - tH / 2;
+    }
+
+    // Clamp to viewport
+    const clampedLeft = Math.max(padding, Math.min(left, viewportW - tW - padding));
+    const clampedTop = Math.max(padding, Math.min(top, viewportH - tH - padding));
+
+    setTooltipStyle({
+      left: `${clampedLeft}px`,
+      top: `${clampedTop}px`,
+      opacity: 1,
+      transition: 'all 0.3s ease-out'
+    });
+
+    // Adjust arrow to still point to target center
+    const targetCenterX = coords.left + coords.width / 2;
+    const targetCenterY = coords.top + coords.height / 2;
+
+    if (step.position === 'top' || step.position === 'bottom') {
+      const arrowLeft = Math.max(20, Math.min(tW - 20, targetCenterX - clampedLeft));
+      setArrowStyle({
+        left: `${arrowLeft}px`,
+        [step.position === 'top' ? 'bottom' : 'top']: '-8px',
+        transform: 'translateX(-50%) rotate(45deg)',
+        borderBottom: step.position === 'top' ? '1px solid #dbeafe' : 'none',
+        borderRight: step.position === 'top' ? '1px solid #dbeafe' : 'none',
+        borderTop: step.position === 'bottom' ? '1px solid #dbeafe' : 'none',
+        borderLeft: step.position === 'bottom' ? '1px solid #dbeafe' : 'none',
+      });
+    } else {
+      const arrowTop = Math.max(20, Math.min(tH - 20, targetCenterY - clampedTop));
+      setArrowStyle({
+        top: `${arrowTop}px`,
+        [step.position === 'left' ? 'right' : 'left']: '-8px',
+        transform: 'translateY(-50%) rotate(45deg)',
+        borderTop: step.position === 'left' ? '1px solid #dbeafe' : 'none',
+        borderRight: step.position === 'left' ? '1px solid #dbeafe' : 'none',
+        borderBottom: step.position === 'right' ? '1px solid #dbeafe' : 'none',
+        borderLeft: step.position === 'right' ? '1px solid #dbeafe' : 'none',
+      });
+    }
+  }, [isReady, coords, currentStep, isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -89,9 +173,36 @@ export function OnboardingTour({ activeTab, setActiveTab, isOpen, onClose }: Onb
     }
   }, [currentStep, activeTab, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const observer = new MutationObserver(() => {
+      updatePosition();
+    });
+
+    observer.observe(document.body, { 
+      childList: true, 
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'id']
+    });
+
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition);
+    };
+  }, [isOpen, currentStep]);
+
   const updatePosition = () => {
     const step = TOUR_STEPS[currentStep];
-    const element = document.getElementById(step.targetId);
+    
+    // Prefer altTargetId if it exists in DOM
+    const altElement = step.altTargetId ? document.getElementById(step.altTargetId) : null;
+    const element = altElement || document.getElementById(step.targetId);
     
     if (element) {
       const rect = element.getBoundingClientRect();
@@ -102,11 +213,16 @@ export function OnboardingTour({ activeTab, setActiveTab, isOpen, onClose }: Onb
         height: rect.height
       });
       setIsReady(true);
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      // Only scroll if it's the primary target (don't scroll for modals as they are centered)
+      if (!altElement) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     } else {
       // If element not found (e.g. tab not switched yet), retry once
       setTimeout(() => {
-        const retryEl = document.getElementById(step.targetId);
+        const retryAlt = step.altTargetId ? document.getElementById(step.altTargetId) : null;
+        const retryEl = retryAlt || document.getElementById(step.targetId);
         if (retryEl) {
           const rect = retryEl.getBoundingClientRect();
           setCoords({
@@ -138,11 +254,15 @@ export function OnboardingTour({ activeTab, setActiveTab, isOpen, onClose }: Onb
   const handleFinish = async () => {
     if (user) {
       try {
-        await updateDoc(doc(db, 'users', user.uid), {
+        localStorage.setItem(`onboarding_seen_${user.uid}`, 'true');
+        // Mark as completed in Firestore using setDoc with merge for higher reliability
+        await setDoc(doc(db, 'users', user.uid), {
           onboardingCompleted: true
-        });
+        }, { merge: true });
+        toast.success('Onboarding completed');
       } catch (err) {
         console.error("Failed to update onboarding status", err);
+        toast.error('Failed to save progress');
       }
     }
     onClose();
@@ -167,11 +287,8 @@ export function OnboardingTour({ activeTab, setActiveTab, isOpen, onClose }: Onb
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 10 }}
             className="absolute pointer-events-auto z-[210] w-full max-w-sm"
-            style={{
-              top: step.position === 'top' ? coords.top - 20 : (step.position === 'bottom' ? coords.top + coords.height + 20 : coords.top + coords.height / 2),
-              left: step.position === 'left' ? coords.left - 20 : (step.position === 'right' ? coords.left + coords.width + 20 : coords.left + coords.width / 2),
-              transform: step.position === 'top' ? 'translate(-50%, -100%)' : (step.position === 'bottom' ? 'translate(-50%, 0)' : (step.position === 'left' ? 'translate(-100%, -50%)' : 'translate(0, -50%)'))
-            }}
+            style={tooltipStyle}
+            ref={tooltipRef}
           >
             <div className="bg-white rounded-2xl p-6 shadow-2xl border border-blue-100 ring-8 ring-white/10">
               <div className="flex justify-between items-start mb-4">
@@ -181,7 +298,7 @@ export function OnboardingTour({ activeTab, setActiveTab, isOpen, onClose }: Onb
                    </div>
                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Step {currentStep + 1} of {TOUR_STEPS.length}</span>
                 </div>
-                <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 transition-colors">
+                <button onClick={handleFinish} className="p-1 text-slate-400 hover:text-slate-600 transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -191,7 +308,7 @@ export function OnboardingTour({ activeTab, setActiveTab, isOpen, onClose }: Onb
 
               <div className="flex items-center justify-between">
                 <button 
-                  onClick={onClose}
+                  onClick={handleFinish}
                   className="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   Skip Tour
@@ -217,13 +334,10 @@ export function OnboardingTour({ activeTab, setActiveTab, isOpen, onClose }: Onb
             </div>
             
             {/* Arrow */}
-            <div className={cn(
-              "absolute w-4 h-4 bg-white rotate-45 border border-blue-100/50",
-              step.position === 'top' && "bottom-[-8px] left-1/2 -translate-x-1/2 border-t-0 border-l-0",
-              step.position === 'bottom' && "top-[-8px] left-1/2 -translate-x-1/2 border-b-0 border-r-0",
-              step.position === 'left' && "right-[-8px] top-1/2 -translate-y-1/2 border-b-0 border-l-0",
-              step.position === 'right' && "left-[-8px] top-1/2 -translate-y-1/2 border-t-0 border-r-0"
-            )} />
+            <div 
+              className="absolute w-4 h-4 bg-white"
+              style={arrowStyle}
+            />
           </motion.div>
         )}
       </AnimatePresence>

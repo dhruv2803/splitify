@@ -7,8 +7,8 @@ The "Configuration" hub for user-specific preferences and data management.
 - **Profile Overview**: Displays user name, email, and avatar fallback.
 - **Global Currency Selection**: Allows users to set their default display currency. Updating this triggers a write to the `users` collection.
 - **Category Management**: 
-    - Users can add custom categories for Income or Expenses.
-    - **Self-Healing**: If a user has no categories, the system automatically "seeds" a set of defaults (Food, Shopping, Salary, etc.).
+    - Users can add and delete custom categories for Income or Expenses.
+    - Categories are stored in the `categories` collection and filtered by `userId`.
 - **Data Portability**: Placeholder UI for CSV/PDF exports.
 - **Privacy Controls (Danger Zone)**: Includes a "Reset Account Data" feature that recursively purges all user-associated documents across 5 collections (`groupExpenses`, `groups`, `transactions`, `accounts`, `categories`).
 
