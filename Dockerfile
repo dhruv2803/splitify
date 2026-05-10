@@ -1,5 +1,5 @@
 # Stage 1: Build Frontend
-FROM node:20-alpine as frontend-builder
+FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 ARG VITE_GOOGLE_CLIENT_ID
 ARG VITE_API_URL
@@ -11,7 +11,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Build Backend
-FROM golang:1.24-alpine as backend-builder
+FROM golang:1.23-alpine AS backend-builder
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
