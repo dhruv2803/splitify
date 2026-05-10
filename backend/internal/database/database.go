@@ -38,7 +38,7 @@ func InitDB() {
 	}
 
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Fatalf("CRITICAL: Failed to connect to database (%s): %v", dbType, err)
 	}
 
 	fmt.Println("Database connection established")
@@ -54,7 +54,7 @@ func InitDB() {
 		&models.GroupExpenseSplit{},
 	)
 	if err != nil {
-		log.Fatal("Failed to migrate database:", err)
+		log.Fatalf("CRITICAL: Failed to migrate database: %v", err)
 	}
 
 	fmt.Println("Database migration completed")

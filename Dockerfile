@@ -12,11 +12,12 @@ RUN npm run build
 
 # Stage 2: Build Backend
 FROM golang:1.25-alpine AS backend-builder
+RUN apk add --no-cache gcc musl-dev
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN go build -o main ./cmd/api/main.go
+RUN CGO_ENABLED=1 GOOS=linux go build -o main ./cmd/api/main.go
 
 # Stage 3: Final Image
 FROM alpine:latest
