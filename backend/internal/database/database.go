@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/dhruv2803/splitify/backend/internal/models"
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
