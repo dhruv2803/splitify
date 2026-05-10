@@ -32,13 +32,8 @@ jobs:
     - name: Build and Push Container
       run: |-
         docker build \
-          --build-arg VITE_FIREBASE_API_KEY="${{ secrets.VITE_FIREBASE_API_KEY }}" \
-          --build-arg VITE_FIREBASE_AUTH_DOMAIN="${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" \
-          --build-arg VITE_FIREBASE_PROJECT_ID="${{ secrets.VITE_FIREBASE_PROJECT_ID }}" \
-          --build-arg VITE_FIREBASE_STORAGE_BUCKET="${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" \
-          --build-arg VITE_FIREBASE_MESSAGING_SENDER_ID="${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" \
-          --build-arg VITE_FIREBASE_APP_ID="${{ secrets.VITE_FIREBASE_APP_ID }}" \
-          --build-arg VITE_FIREBASE_DATABASE_ID="${{ secrets.VITE_FIREBASE_DATABASE_ID }}" \
+          --build-arg VITE_GOOGLE_CLIENT_ID="${{ secrets.VITE_GOOGLE_CLIENT_ID }}" \
+          --build-arg VITE_API_URL="${{ secrets.VITE_API_URL }}" \
           -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/app:${{ github.sha }} .
         docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/app:${{ github.sha }}
 
@@ -49,5 +44,7 @@ jobs:
           --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/app:${{ github.sha }} \
           --platform managed \
           --allow-unauthenticated \
-          --port=80 \
+          --port=8080 \
+          --set-env-vars="GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},DB_TYPE=${{ secrets.DB_TYPE }},DB_URL=${{ secrets.DB_URL }},DB_PATH=splitify.db" \
+          --add-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
           --quiet

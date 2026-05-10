@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, getDocs, writeBatch, updateDoc } from 'firebase/firestore';
+import { api } from '../lib/api';
 import { useAuth } from './AuthProvider';
 import { Category, TransactionType, CURRENCIES } from '../types';
 import { cn } from '../lib/utils';
@@ -24,25 +23,30 @@ export function SettingsPage() {
     if (!user) return;
     setIsUpdatingCurrency(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        currency: currencyCode,
-      });
+      await api.put('/profile', { ...profile, currency: currencyCode });
       toast.success(`Default currency set to ${currencyCode}`);
-    } catch (err) {
-      toast.error('Failed to update currency');
+      // Refreshing profile is handled by the AuthProvider if it re-syncs, 
+      // but since we updated it, we should probably trigger a re-sync or manually update
+      window.location.reload(); // Quick way to re-sync
+    } catch (err: any) {
+      toast.error('Failed to update currency: ' + err.message);
     } finally {
       setIsUpdatingCurrency(false);
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      const data = await api.get('/categories');
+      setCategories(data);
+    } catch (err) {
+      console.error('Failed to fetch categories:', err);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'categories'), where('userId', '==', user.uid));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
-      setCategories(data);
-    });
-    return unsub;
+    fetchCategories();
   }, [user]);
 
 
@@ -53,70 +57,13 @@ export function SettingsPage() {
     const toastId = toast.loading('Purging your data...');
 
     try {
-      const collectionConfigs = [
-        { name: 'groupExpenses', field: 'paidBy' },
-        { name: 'groups', field: 'ownerId' },
-        { name: 'transactions', field: 'userId' },
-        { name: 'accounts', field: 'userId' },
-        { name: 'categories', field: 'userId' }
-      ];
-      
-      for (const config of collectionConfigs) {
-        const q = query(collection(db, config.name), where(config.field, '==', user.uid));
-        
-        let snapshot;
-        try {
-          snapshot = await getDocs(q);
-        } catch (error: any) {
-          const errInfo = {
-            error: error.message,
-            operationType: 'get',
-            path: config.name,
-            authInfo: { userId: user.uid, email: user.email }
-          };
-          console.error('Purge Fetch Error:', JSON.stringify(errInfo));
-          throw new Error(JSON.stringify(errInfo));
-        }
-        
-        if (snapshot.empty) continue;
-
-        const docs = snapshot.docs;
-        for (let i = 0; i < docs.length; i += 500) {
-          const batch = writeBatch(db);
-          const chunk = docs.slice(i, i + 500);
-          chunk.forEach((doc) => {
-            batch.delete(doc.ref);
-          });
-          
-          try {
-            await batch.commit();
-          } catch (error: any) {
-            const errInfo = {
-              error: error.message,
-              operationType: 'write',
-              path: config.name,
-              authInfo: { userId: user.uid, email: user.email }
-            };
-            console.error('Purge Batch Error:', JSON.stringify(errInfo));
-            throw new Error(JSON.stringify(errInfo));
-          }
-        }
-      }
-
+      await api.post('/profile/purge');
       toast.success('All data cleared successfully', { id: toastId });
       setIsDeleteConfirmOpen(false);
+      window.location.reload(); // Refresh to clear state
     } catch (err: any) {
       console.error('Purge error:', err);
-      try {
-        const parsed = JSON.parse(err.message);
-        toast.error(`Clear failed: ${parsed.error}`, { id: toastId });
-      } catch {
-        if (err?.message?.includes('index')) {
-          toast.error('System indexing in progress. Please try again in 1 minute.', { id: toastId });
-        } else {
-          toast.error('Failed to clear some data: ' + (err?.message || 'Unknown error'), { id: toastId });
-        }
-      }
+      toast.error('Failed to clear data: ' + err.message, { id: toastId });
     } finally {
       setIsClearing(false);
     }
@@ -128,25 +75,22 @@ export function SettingsPage() {
 
     try {
       if (editingCategory) {
-        await updateDoc(doc(db, 'categories', editingCategory.id), {
-          name,
-        });
+        await api.put(`/categories/${editingCategory.id}`, { name });
         toast.success('Category updated');
       } else {
-        await addDoc(collection(db, 'categories'), {
+        await api.post('/categories', {
           name,
           type,
           icon: 'Tag',
-          userId: user.uid,
-          createdAt: serverTimestamp(),
         });
         toast.success('Category added');
       }
       setName('');
       setEditingCategory(null);
       setIsModalOpen(false);
-    } catch (err) {
-      toast.error(editingCategory ? 'Failed to update category' : 'Failed to add category');
+      fetchCategories();
+    } catch (err: any) {
+      toast.error(err.message || 'Action failed');
     }
   };
 
@@ -161,19 +105,11 @@ export function SettingsPage() {
     if (!user) return;
     
     try {
-      // Check if any transactions use this category
-      const q = query(collection(db, 'transactions'), where('categoryId', '==', id), where('userId', '==', user.uid));
-      const snapshot = await getDocs(q);
-      
-      if (!snapshot.empty) {
-        toast.error('Cannot delete: Category is being used by transactions');
-        return;
-      }
-
-      await deleteDoc(doc(db, 'categories', id));
+      await api.delete(`/categories/${id}`);
       toast.success('Category removed');
-    } catch (err) {
-      toast.error('Failed to remove category');
+      fetchCategories();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to remove category');
     }
   };
 

@@ -17,7 +17,8 @@
 # Go workspace file
 go.work
 
-# SQLite database
+# Local build artifacts
+dist/
 *.db
 *.db-journal
 

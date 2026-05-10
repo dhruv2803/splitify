@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { collection, query, getDocs, writeBatch, doc, where, updateDoc } from 'firebase/firestore';
+import { api } from '../lib/api';
 import { useAuth } from './AuthProvider';
 import { toast } from 'react-hot-toast';
 import { Shield, Database, RefreshCw, AlertCircle, CheckCircle2, Users as UsersIcon, UserCheck, UserMinus, Search, ArrowRight } from 'lucide-react';
@@ -16,11 +15,6 @@ export function AdminPage() {
   const [migrationStatus, setMigrationStatus] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'stats' | 'users' | 'migration'>('stats');
 
-  // Fix Tool State
-  const [fixUserId, setFixUserId] = useState('');
-  const [fixFromCurrency, setFixFromCurrency] = useState('INR');
-  const [fixToCurrency, setFixToCurrency] = useState('INR');
-
   useEffect(() => {
     if (!profile?.isAdmin) return;
     fetchData();
@@ -29,20 +23,15 @@ export function AdminPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const collectionsNames = ['users', 'accounts', 'transactions', 'groupExpenses'];
-      const results = await Promise.all(collectionsNames.map(c => getDocs(collection(db, c))));
+      const [statsData, usersData] = await Promise.all([
+        api.getAdminStats(),
+        api.getAllUsers()
+      ]);
       
-      const usersData = results[0].docs.map(d => d.data() as UserProfile);
-      setAllUsers(usersData);
-
-      setStats({
-        users: results[0].size,
-        accounts: results[1].size,
-        transactions: results[2].size,
-        groupExpenses: results[3].size
-      });
+      setStats(statsData as any);
+      setAllUsers(usersData as any);
     } catch (err) {
-      console.error("Error fetching stats:", err);
+      console.error("Error fetching admin data:", err);
       toast.error("Failed to load admin data");
     } finally {
       setLoading(false);
@@ -56,9 +45,7 @@ export function AdminPage() {
     }
 
     try {
-      await updateDoc(doc(db, 'users', userId), {
-        isAdmin: !currentStatus
-      });
+      await api.updateUserRole(userId, !currentStatus);
       toast.success("User status updated");
       fetchData(); // refresh
     } catch (err) {
@@ -68,94 +55,20 @@ export function AdminPage() {
   };
 
   const runMigration = async () => {
-    if (!window.confirm("This will add default currencies to all documents missing them. Continue?")) return;
+    if (!window.confirm("Run system migration/checks?")) return;
     
     setMigrating(true);
-    setMigrationStatus("Scanning for documents...");
+    setMigrationStatus("Running migration...");
     
     try {
-      let totalUpdated = 0;
-      const collectionsToPatch = ['accounts', 'transactions', 'groupExpenses'];
-      
-      const userCurrencyMap: Record<string, string> = {};
-      allUsers.forEach(u => {
-        userCurrencyMap[u.uid] = u.currency || 'INR';
-      });
-
-      for (const colName of collectionsToPatch) {
-        setMigrationStatus(`Processing ${colName}...`);
-        const snapshot = await getDocs(collection(db, colName));
-        const batch = writeBatch(db);
-        let batchCount = 0;
-        
-        snapshot.forEach(docSnap => {
-          const data = docSnap.data();
-          if (!data.currency) {
-            const ownerCurrency = userCurrencyMap[data.userId] || 'INR';
-            batch.update(doc(db, colName, docSnap.id), { currency: ownerCurrency });
-            batchCount++;
-          }
-        });
-
-        if (batchCount > 0) {
-          await batch.commit();
-          totalUpdated += batchCount;
-        }
-      }
-
-      setMigrationStatus(`Successfully updated ${totalUpdated} records.`);
-      toast.success(`Migration complete: ${totalUpdated} records updated`);
+      const res = await api.runMigration();
+      setMigrationStatus(res.message || "Migration complete.");
+      toast.success("Migration complete");
       fetchData();
     } catch (err) {
       console.error("Migration error:", err);
-      setMigrationStatus("Migration failed. See console.");
+      setMigrationStatus("Migration failed.");
       toast.error("Migration failed");
-    } finally {
-      setMigrating(false);
-    }
-  };
-
-  const runFix = async () => {
-    if (!fixUserId) {
-        toast.error("Please select a user");
-        return;
-    }
-    if (!window.confirm(`Swap all ${fixFromCurrency} records to ${fixToCurrency} for this user?`)) return;
-    
-    setMigrating(true);
-    setMigrationStatus("Fixing records...");
-    
-    try {
-      let totalUpdated = 0;
-      const collectionsToPatch = ['accounts', 'transactions', 'groupExpenses'];
-      
-      for (const colName of collectionsToPatch) {
-        const q = query(
-            collection(db, colName), 
-            where('userId', '==', fixUserId),
-            where('currency', '==', fixFromCurrency)
-        );
-        const snapshot = await getDocs(q);
-        const batch = writeBatch(db);
-        let batchCount = 0;
-        
-        snapshot.forEach(docSnap => {
-            batch.update(doc(db, colName, docSnap.id), { currency: fixToCurrency });
-            batchCount++;
-        });
-
-        if (batchCount > 0) {
-          await batch.commit();
-          totalUpdated += batchCount;
-        }
-      }
-
-      setMigrationStatus(`Successfully swapped ${totalUpdated} records.`);
-      toast.success(`Fix complete: ${totalUpdated} records updated`);
-    } catch (err) {
-      console.error("Fix error:", err);
-      setMigrationStatus("Fix failed. See console.");
-      toast.error("Fix failed");
     } finally {
       setMigrating(false);
     }
@@ -305,71 +218,13 @@ export function AdminPage() {
                 <RefreshCw className="w-6 h-6 text-amber-600" />
               </div>
               <div>
-                <h3 className="text-xl font-black tracking-tighter text-slate-900">Legacy Migration</h3>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5">Initial Setup</p>
+                <h3 className="text-xl font-black tracking-tighter text-slate-900">System Integrity</h3>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5">Database Maintenance</p>
               </div>
             </div>
             <p className="text-sm text-slate-600 mb-6 italic bg-slate-50 p-4 rounded-xl border-l-4 border-amber-400">
-               Adds preferred currency to any records missing one. Safe to run multiple times.
+               Runs a background check to ensure all models follow the current schema and default values.
             </p>
-            <button 
-              onClick={runMigration}
-              disabled={migrating}
-              className="w-full bg-slate-900 text-white rounded-2xl py-4 font-black shadow-lg shadow-slate-200 hover:bg-slate-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              Run Global Migration
-            </button>
-          </div>
-
-          <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="p-3 bg-blue-50 rounded-2xl">
-                <AlertCircle className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="text-xl font-black tracking-tighter text-slate-900">Currency Swap (Bulk Fix)</h3>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5">Correct Migration Errors</p>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Target User</label>
-                    <select 
-                        value={fixUserId} 
-                        onChange={(e) => setFixUserId(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold text-slate-900"
-                    >
-                        <option value="">Select User</option>
-                        {allUsers.map(u => <option key={u.uid} value={u.uid}>{u.displayName || u.email} ({u.uid.slice(0, 5)})</option>)}
-                    </select>
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">From</label>
-                        <select 
-                            value={fixFromCurrency} 
-                            onChange={(e) => setFixFromCurrency(e.target.value)}
-                            className="w-full bg-rose-50 border border-rose-100 text-rose-700 rounded-xl p-3 text-sm font-black"
-                        >
-                            {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-                        </select>
-                    </div>
-                    <div className="pt-6">
-                        <ArrowRight className="text-slate-300 w-5 h-5" />
-                    </div>
-                    <div className="flex-1">
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">To</label>
-                        <select 
-                            value={fixToCurrency} 
-                            onChange={(e) => setFixToCurrency(e.target.value)}
-                            className="w-full bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl p-3 text-sm font-black"
-                        >
-                            {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-                        </select>
-                    </div>
-                </div>
-            </div>
 
             {migrationStatus && (
                 <div className="p-4 bg-slate-900 text-white rounded-xl mb-6 flex items-center gap-3">
@@ -379,11 +234,11 @@ export function AdminPage() {
             )}
 
             <button 
-              onClick={runFix}
-              disabled={migrating || !fixUserId}
-              className="w-full bg-blue-600 text-white rounded-2xl py-4 font-black shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              onClick={runMigration}
+              disabled={migrating}
+              className="w-full bg-slate-900 text-white rounded-2xl py-4 font-black shadow-lg shadow-slate-200 hover:bg-slate-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              Perform Bulk Swap
+              Verify System Integrity
             </button>
           </div>
         </div>

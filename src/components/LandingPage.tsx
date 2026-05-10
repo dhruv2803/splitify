@@ -3,17 +3,10 @@ import { useAuth } from './AuthProvider';
 import { motion } from 'motion/react';
 import { Wallet, Users, BarChart3, ShieldCheck, Receipt, ArrowRight } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { GoogleLogin } from '@react-oauth/google';
 
 export function LandingPage() {
   const { signIn } = useAuth();
-
-  const handleSignIn = async () => {
-    try {
-      await signIn();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to sign in');
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans overflow-hidden relative">
@@ -30,12 +23,15 @@ export function LandingPage() {
             </div>
             <span className="text-xl font-bold text-slate-900 tracking-tighter">Splitify</span>
           </div>
-          <button 
-            onClick={handleSignIn}
-            className="text-sm font-bold text-slate-600 hover:text-blue-600 transition-colors"
-          >
-            Sign In
-          </button>
+          <GoogleLogin 
+            onSuccess={credentialResponse => {
+              if (credentialResponse.credential) signIn(credentialResponse.credential);
+            }}
+            onError={() => toast.error('Login Failed')}
+            useOneTap
+            shape="pill"
+            size="small"
+          />
         </div>
       </header>
 
@@ -58,16 +54,17 @@ export function LandingPage() {
             and manage personal balances without the noise.
           </p>
 
-          <div className="pt-8 flex flex-col sm:flex-row gap-4 justify-center">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={handleSignIn}
-              className="bg-slate-900 text-white px-10 py-4 rounded-xl font-bold text-sm shadow-2xl shadow-slate-200 flex items-center justify-center transition-all hover:bg-slate-800"
-            >
-              Get Started for Free
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </motion.button>
+          <div className="pt-8 flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <GoogleLogin 
+              onSuccess={credentialResponse => {
+                if (credentialResponse.credential) signIn(credentialResponse.credential);
+              }}
+              onError={() => toast.error('Login Failed')}
+              text="continue_with"
+              shape="pill"
+              size="large"
+              width="250"
+            />
             <div className="flex items-center justify-center gap-4 py-2">
                <div className="flex -space-x-3">
                  {[1,2,3].map(i => (
