@@ -22,7 +22,10 @@ func main() {
 	// Initialize Database
 	database.InitDB()
 
-	// Initialize Auth (Google SSO handled in middleware)
+	// Validate essential environment variables
+	if os.Getenv("GOOGLE_CLIENT_ID") == "" {
+		log.Fatal("CRITICAL: GOOGLE_CLIENT_ID environment variable is not set")
+	}
 
 	// Setup Router
 	r := gin.Default()
@@ -112,7 +115,7 @@ func main() {
 	}
 
 	fmt.Printf("Server starting on port %s...\n", port)
-	if err := r.Run(":" + port); err != nil {
+	if err := r.Run("0.0.0.0:" + port); err != nil {
 		log.Fatal("Failed to start server:", err)
 	}
 }
