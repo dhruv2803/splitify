@@ -1,386 +1,77 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, getDocs, orderBy } from 'firebase/firestore';
 import { useAuth } from './AuthProvider';
-import { Group, GroupExpense, Split, UserProfile, CURRENCIES } from '../types';
-import { cn, formatCurrency } from '../lib/utils';
-import { Plus, Users, X, MoreVertical, CreditCard, ChevronRight, UserPlus, Receipt } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { cn } from '../lib/utils';
+import { Users, Sparkles, MessageSquare, ShieldCheck, Zap } from 'lucide-react';
+import { motion } from 'motion/react';
 
 export function GroupsPage() {
-  const { user, profile } = useAuth();
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
-  const [expenses, setExpenses] = useState<GroupExpense[]>([]);
-  const [isNewGroupModalOpen, setIsNewGroupModalOpen] = useState(false);
-  const [isNewExpenseModalOpen, setIsNewExpenseModalOpen] = useState(false);
-
-  const currency = profile?.currency || 'INR';
-  const format = (amt: number) => formatCurrency(amt, currency);
-
-  // Form State - Group
-  const [groupName, setGroupName] = useState('');
-  const [memberEmails, setMemberEmails] = useState<string[]>([]);
-  const [newMemberEmail, setNewMemberEmail] = useState('');
-
-  // Form State - Expense
-  const [expenseDescription, setExpenseDescription] = useState('');
-  const [expenseAmount, setExpenseAmount] = useState('');
-  const [expenseCurrency, setExpenseCurrency] = useState(profile?.currency || 'INR');
-
-  useEffect(() => {
-    if (profile?.currency && !expenseCurrency) {
-      setExpenseCurrency(profile.currency);
-    }
-  }, [profile]);
-
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'groups'), where('members', 'array-contains', user.uid));
-    return onSnapshot(q, (snapshot) => {
-      setGroups(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Group)));
-    });
-  }, [user]);
-
-  useEffect(() => {
-    if (!selectedGroup) return;
-    const q = query(collection(db, 'groupExpenses'), where('groupId', '==', selectedGroup.id), orderBy('date', 'desc'));
-    return onSnapshot(q, (snapshot) => {
-      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GroupExpense)));
-    });
-  }, [selectedGroup]);
-
-  const handleCreateGroup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !groupName) return;
-
-    try {
-      // In a real app, we'd lookup user UIDs from emails.
-      // For this demo, let's just assume the user is the only member for now or add their email as placeholder.
-      // We'll just add the current user's UID to the members.
-      await addDoc(collection(db, 'groups'), {
-        name: groupName,
-        ownerId: user.uid,
-        members: [user.uid],
-        createdAt: serverTimestamp(),
-      });
-      toast.success('Group created');
-      setGroupName('');
-      setIsNewGroupModalOpen(false);
-    } catch (err) {
-      toast.error('Failed to create group');
-    }
-  };
-
-  const handleAddExpense = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !selectedGroup || !expenseAmount) return;
-
-    const amountNum = parseFloat(expenseAmount);
-    if (isNaN(amountNum) || amountNum <= 0) return;
-
-    try {
-      const splitAmount = amountNum / selectedGroup.members.length;
-      const splits: Split[] = selectedGroup.members.map(mUid => ({
-        userId: mUid,
-        amount: splitAmount,
-        status: mUid === user.uid ? 'settled' : 'pending'
-      }));
-
-      await addDoc(collection(db, 'groupExpenses'), {
-        description: expenseDescription,
-        totalAmount: amountNum,
-        paidBy: user.uid,
-        groupId: selectedGroup.id,
-        date: new Date().toISOString(),
-        splits,
-        currency: expenseCurrency,
-        userId: user.uid, // recorded for rules
-      });
-
-      toast.success('Expense added to group');
-      setExpenseAmount('');
-      setExpenseDescription('');
-      setIsNewExpenseModalOpen(false);
-    } catch (err) {
-      toast.error('Failed to add expense');
-    }
-  };
-
-  const calculateBalances = () => {
-    if (!selectedGroup || !user) return [];
-    
-    // Simple balance calculation: Who owes me vs who do I owe
-    const balances: Record<string, number> = {};
-    selectedGroup.members.forEach(uid => { if(uid !== user.uid) balances[uid] = 0; });
-
-    expenses.forEach(exp => {
-      if (exp.paidBy === user.uid) {
-        // I paid, others owe me
-        exp.splits.forEach(split => {
-          if (split.userId !== user.uid) {
-            balances[split.userId] += split.amount;
-          }
-        });
-      } else {
-        // Someone else paid, look for my split
-        const mySplit = exp.splits.find(s => s.userId === user.uid);
-        if (mySplit) {
-          balances[exp.paidBy] -= mySplit.amount;
-        }
-      }
-    });
-
-    return Object.entries(balances).map(([uid, balance]) => ({ uid, balance }));
-  };
-
-  if (selectedGroup) {
-    const balances = calculateBalances();
-    return (
-      <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-        <div className="flex items-center mb-8 gap-4 px-1">
-          <button onClick={() => setSelectedGroup(null)} className="p-2 -ml-2 text-slate-400 hover:text-slate-900 transition-colors bg-white rounded-lg border border-slate-200 shadow-sm">
-            <ChevronRight className="h-5 w-5 rotate-180" />
-          </button>
-          <div className="flex-1">
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">{selectedGroup.name}</h2>
-            <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest">{selectedGroup.members.length} Members</p>
-          </div>
-          <button 
-            onClick={() => setIsNewExpenseModalOpen(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md shadow-blue-100 hover:bg-blue-700 transition-colors"
-          >
-            + New Bill
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Summary Card */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 overflow-hidden relative">
-             <div className="absolute top-0 right-0 -tr-4 -tt-4 w-24 h-24 bg-blue-50 rounded-full blur-2xl"></div>
-             <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Total Group Spend</h3>
-             <div className="text-3xl font-black text-slate-900 tracking-tight mb-2">
-                {format(expenses.reduce((acc, curr) => acc + curr.totalAmount, 0))}
-             </div>
-             <div className="flex items-center gap-2 text-[10px] font-bold text-blue-600 bg-blue-50 w-fit px-2 py-1 rounded">
-                <Users className="h-3 w-3" />
-                SPLIT BETWEEN {selectedGroup.members.length} MEMBERS
-             </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-             <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Settlement Overview</h3>
-             <div className="space-y-3">
-                {balances.length === 0 ? (
-                  <p className="text-slate-400 text-xs italic">No other members</p>
-                ) : (
-                  balances.map((b) => (
-                    <div key={b.uid} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center">
-                           <Users className="h-3 w-3 text-slate-400" />
-                        </div>
-                        <span className="text-xs font-semibold text-slate-700">{b.uid.slice(0, 8)}...</span>
-                      </div>
-                      <span className={cn(
-                        "text-xs font-bold",
-                        b.balance > 0 ? "text-green-600" : b.balance < 0 ? "text-red-500" : "text-slate-400"
-                      )}>
-                        {b.balance > 0 ? `+${format(b.balance)}` : b.balance < 0 ? `-${format(Math.abs(b.balance))}` : format(0)}
-                      </span>
-                    </div>
-                  ))
-                )}
-             </div>
-          </div>
-        </div>
-
-        {/* Expenses List */}
-        <div className="mt-10">
-          <div className="flex items-center justify-between mb-4 px-1">
-             <h3 className="font-bold text-slate-900 tracking-tight">Bill History</h3>
-             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{expenses.length} Records</span>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
-            {expenses.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 text-xs italic">No bills logged yet</div>
-            ) : (
-              expenses.map(e => (
-                <div key={e.id} className="p-4 flex items-center hover:bg-slate-50 transition-colors group">
-                  <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-lg flex items-center justify-center mr-4 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                    <Receipt className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate tracking-tight">{e.description}</p>
-                    <p className="text-[10px] text-slate-400 uppercase font-semibold">Paid by {e.paidBy === user?.uid ? 'You' : 'Member'} • {new Date(e.date).toLocaleDateString()}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-slate-900 tracking-tight">{formatCurrency(e.totalAmount, e.currency || currency)}</p>
-                    <p className="text-[9px] text-blue-600 font-bold uppercase tracking-tighter">Your share: {formatCurrency(e.totalAmount / (selectedGroup.members.length || 1), e.currency || currency)}</p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* New Expense Modal */}
-        {isNewExpenseModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsNewExpenseModalOpen(false)} />
-            <div className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl border border-slate-200">
-              <div className="flex justify-between items-center mb-8">
-                 <h3 className="text-xl font-bold text-slate-900 tracking-tight">Post Group Bill</h3>
-                 <button onClick={() => setIsNewExpenseModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg transition-colors">
-                    <X className="h-5 w-5" />
-                 </button>
-              </div>
-              <form onSubmit={handleAddExpense} className="space-y-6">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Expense Description</label>
-                  <input 
-                    required autoFocus
-                    value={expenseDescription}
-                    onChange={e => setExpenseDescription(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                    placeholder="e.g. Dinner, AirBnB Fees"
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Total Amount</label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-xl">
-                        {CURRENCIES.find(c => c.code === expenseCurrency)?.symbol || '$'}
-                      </span>
-                      <input 
-                        required type="number" step="0.01"
-                        value={expenseAmount}
-                        onChange={e => setExpenseAmount(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pl-10 text-2xl font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Curr</label>
-                    <select 
-                      value={expenseCurrency}
-                      onChange={e => setExpenseCurrency(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                    >
-                      {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400 mt-3 ml-1 font-medium bg-slate-50 p-2 rounded border border-slate-100">
-                    Will be split equally between {selectedGroup.members.length} members ({formatCurrency((parseFloat(expenseAmount) || 0) / selectedGroup.members.length, expenseCurrency)} each).
-                  </p>
-                </div>
-                <button 
-                  type="submit"
-                  className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold text-sm shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all mt-4"
-                >
-                  Log Group Bill
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
+  const { profile } = useAuth();
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center px-1">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Shared Bills</h2>
-          <p className="text-slate-500 text-sm">Split expenses with friends</p>
-        </div>
-        <button 
-          onClick={() => setIsNewGroupModalOpen(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md shadow-blue-100 hover:bg-blue-700 transition-colors"
-        >
-          + Create Group
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {groups.length === 0 ? (
-          <button 
-            onClick={() => setIsNewGroupModalOpen(true)}
-            className="md:col-span-2 bg-white rounded-xl border-2 border-dashed border-slate-100 p-12 text-center group hover:bg-slate-50 transition-colors"
-          >
-            <Users className="h-12 w-12 text-slate-200 mx-auto mb-4 group-hover:text-blue-300 transition-colors" />
-            <p className="text-slate-400 font-bold text-sm tracking-tight mb-2">No split groups found</p>
-            <span className="text-blue-600 font-black text-[10px] uppercase tracking-widest">Start a new group &rarr;</span>
-          </button>
-        ) : (
-          groups.map(g => (
-            <div 
-              key={g.id} 
-              onClick={() => setSelectedGroup(g)}
-              className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-between cursor-pointer group hover:border-blue-200 hover:shadow-md transition-all active:scale-[0.98]"
-            >
-              <div className="flex items-center mb-6">
-                <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-lg flex items-center justify-center mr-4 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                   <Users className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition-colors tracking-tight">{g.name}</h3>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{g.members.length} Members</p>
-                </div>
-                <ChevronRight className="ml-auto text-slate-300 h-5 w-5 group-hover:text-blue-400 transition-colors" />
-              </div>
-              <div className="flex gap-4 pt-4 border-t border-slate-50">
-                 <div className="flex-1">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Your Status</p>
-                    <p className="text-xs font-bold text-green-600">Settled</p>
-                 </div>
-                 <div className="flex-1 text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Activity</p>
-                    <p className="text-xs font-bold text-slate-500 italic">2 pending bills</p>
-                 </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {isNewGroupModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsNewGroupModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-md rounded-2xl p-8 shadow-2xl border border-slate-200">
-            <div className="flex justify-between items-center mb-8">
-               <h3 className="text-xl font-bold text-slate-900 tracking-tight">Create Group</h3>
-               <button onClick={() => setIsNewGroupModalOpen(false)} className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg transition-colors">
-                  <X className="h-5 w-5" />
-               </button>
-            </div>
-            <form onSubmit={handleCreateGroup} className="space-y-6">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Group Name</label>
-                <input 
-                  required autoFocus
-                  value={groupName}
-                  onChange={e => setGroupName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="e.g. Europe Trip 2026, Flatmates"
-                />
-              </div>
-              <button 
-                type="submit"
-                className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold text-sm shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all mt-4"
-              >
-                Launch Group
-              </button>
-            </form>
+    <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 md:p-8">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-2xl w-full text-center space-y-8"
+      >
+        <div className="relative inline-block">
+          <div className="w-24 h-24 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto shadow-2xl shadow-blue-200 relative z-10 animate-pulse">
+            <Users className="h-10 w-10 text-white" />
           </div>
+          <div className="absolute -top-2 -right-2 w-8 h-8 bg-amber-400 rounded-full flex items-center justify-center shadow-lg z-20">
+            <Sparkles className="h-4 w-4 text-white" />
+          </div>
+          <div className="absolute inset-0 bg-blue-400 rounded-3xl blur-3xl opacity-20 scale-150"></div>
         </div>
-      )}
+
+        <div className="space-y-4">
+          <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight">
+            Collaborative <br />
+            <span className="text-blue-600">Split-Flow</span> Coming Soon.
+          </h2>
+          <p className="text-slate-500 text-lg font-medium max-w-lg mx-auto leading-relaxed">
+            We're re-engineering the way you split bills with friends. A more powerful, automated, and secure group expense engine is currently in the forge.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-12">
+          {[
+            { icon: Zap, title: "Instant Split", desc: "Atomic bill division across any number of members." },
+            { icon: MessageSquare, title: "Chat context", desc: "Discuss specific expenses within the transaction thread." },
+            { icon: ShieldCheck, title: "Auto-Settle", desc: "One-tap settlements via connected banking hubs." }
+          ].map((feature, i) => (
+            <motion.div 
+              key={feature.title}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 + (i * 0.1) }}
+              className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all group"
+            >
+              <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-50 transition-colors">
+                <feature.icon className="h-5 w-5 text-slate-400 group-hover:text-blue-600" />
+              </div>
+              <h4 className="font-black text-slate-900 text-sm mb-1">{feature.title}</h4>
+              <p className="text-[10px] font-medium text-slate-400 leading-normal uppercase tracking-wider">{feature.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+
+        <div className="pt-8 flex flex-col items-center gap-4">
+           <div className="flex -space-x-3">
+              {[1,2,3,4].map(i => (
+                <div key={i} className="w-10 h-10 rounded-full border-4 border-slate-50 bg-slate-200 overflow-hidden shadow-sm">
+                   <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${i * 123}`} alt="User" />
+                </div>
+              ))}
+              <div className="w-10 h-10 rounded-full border-4 border-slate-50 bg-blue-600 flex items-center justify-center text-white text-[10px] font-black shadow-sm">
+                 +1.2k
+              </div>
+           </div>
+           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Join 1,200+ users on the waitlist</p>
+           <button className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95">
+              Notify Me When Live
+           </button>
+        </div>
+      </motion.div>
     </div>
   );
 }

@@ -1,98 +1,89 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
-import { auth, googleProvider, db } from '../lib/firebase';
-import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, updateDoc } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
+import { api } from '../lib/api';
 import { UserProfile } from '../types';
+import { jwtDecode } from 'jwt-decode';
+
+interface GoogleUser {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL: string;
+}
 
 interface AuthContextType {
-  user: User | null;
+  user: GoogleUser | null;
   profile: UserProfile | null;
   loading: boolean;
-  signIn: () => Promise<void>;
+  signIn: (credential: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<GoogleUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const unsubProfileRef = React.useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      try {
-        if (user) {
-          setUser(user);
+    const initAuth = async () => {
+      const savedToken = localStorage.getItem('google_id_token');
+      if (savedToken) {
+        try {
+          const decoded: any = jwtDecode(savedToken);
+          const currentTime = Date.now() / 1000;
           
-          // Subscribe to profile changes
-          const userRef = doc(db, 'users', user.uid);
-          unsubProfileRef.current = onSnapshot(userRef, (docSnap) => {
-            if (docSnap.exists()) {
-              const data = docSnap.data();
-              setProfile(data as UserProfile);
-            } else {
-              // Create if doesn't exist (e.g. first login)
-              setDoc(userRef, {
-                uid: user.uid,
-                email: user.email,
-                displayName: user.displayName,
-                photoURL: user.photoURL,
-                currency: 'INR',
-                onboardingCompleted: false,
-                createdAt: serverTimestamp(),
-              }).catch(err => {
-                console.error("Error setting initial profile", err);
-              });
-            }
-          }, (error) => {
-            handleFirestoreError(error, OperationType.GET, `users/${user.uid}`, auth);
-          });
-        } else {
-          setUser(null);
-          setProfile(null);
-          if (unsubProfileRef.current) {
-            unsubProfileRef.current();
-            unsubProfileRef.current = null;
+          if (decoded.exp > currentTime) {
+            setUser({
+              uid: decoded.sub,
+              email: decoded.email,
+              displayName: decoded.name,
+              photoURL: decoded.picture
+            });
+            const profileData = await api.post('/profile/sync');
+            setProfile(profileData);
+          } else {
+            logout();
           }
+        } catch (error) {
+          console.error('Failed to restore session:', error);
+          logout();
         }
-      } catch (error) {
-        console.error('Error in auth state change sync:', error);
-      } finally {
-        setLoading(false);
       }
-    });
-
-    return () => {
-      unsubscribe();
-      if (unsubProfileRef.current) unsubProfileRef.current();
+      setLoading(false);
     };
+
+    initAuth();
   }, []);
 
-  const signIn = async () => {
+  const signIn = async (credential: string) => {
     try {
       setLoading(true);
-      await signInWithPopup(auth, googleProvider);
+      localStorage.setItem('google_id_token', credential);
+      
+      const decoded: any = jwtDecode(credential);
+      setUser({
+        uid: decoded.sub,
+        email: decoded.email,
+        displayName: decoded.name,
+        photoURL: decoded.picture
+      });
+
+      const profileData = await api.post('/profile/sync');
+      setProfile(profileData);
+      setLoading(false);
     } catch (error: any) {
       console.error('Error signing in with Google', error);
-      setLoading(false);
+      logout();
       throw error;
     }
   };
 
   const logout = async () => {
-    try {
-      if (unsubProfileRef.current) {
-        unsubProfileRef.current();
-        unsubProfileRef.current = null;
-      }
-      await signOut(auth);
-    } catch (error) {
-      console.error('Error signing out', error);
-      throw error;
-    }
+    localStorage.removeItem('google_id_token');
+    setUser(null);
+    setProfile(null);
+    setLoading(false);
   };
 
   return (

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, runTransaction, orderBy } from 'firebase/firestore';
+import { api } from '../lib/api';
 import { useAuth } from './AuthProvider';
 import { Transaction, Account, Category, TransactionType, CURRENCIES } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
@@ -32,32 +31,30 @@ export function TransactionsPage() {
     }
   }, [profile]);
 
+  const fetchData = async () => {
+    try {
+      const [tData, aData, cData] = await Promise.all([
+        api.getTransactions(),
+        api.getAccounts(),
+        api.getCategories()
+      ]);
+
+      // Map IDs to strings for UI consistency
+      setTransactions((tData || []).map((t: any) => ({ ...t, id: t.id.toString(), accountId: t.accountId.toString(), categoryId: t.categoryId.toString() })));
+      
+      const formattedAccounts = (aData || []).map((a: any) => ({ ...a, id: a.id.toString() }));
+      setAccounts(formattedAccounts);
+      if (formattedAccounts.length > 0 && !accountId) setAccountId(formattedAccounts[0].id);
+
+      setCategories((cData || []).map((c: any) => ({ ...c, id: c.id.toString() })));
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
-
-    const qT = query(collection(db, 'transactions'), where('userId', '==', user.uid), orderBy('date', 'desc'));
-    const unsubT = onSnapshot(qT, (snapshot) => {
-      setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
-    });
-
-    const qA = query(collection(db, 'accounts'), where('userId', '==', user.uid));
-    const unsubA = onSnapshot(qA, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account));
-      setAccounts(data);
-      if (data.length > 0 && !accountId) setAccountId(data[0].id);
-    });
-
-    const qC = query(collection(db, 'categories'), where('userId', '==', user.uid));
-    const unsubC = onSnapshot(qC, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
-      setCategories(data);
-    });
-
-    return () => {
-      unsubT();
-      unsubA();
-      unsubC();
-    };
+    fetchData();
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -71,64 +68,33 @@ export function TransactionsPage() {
     if (isNaN(amountNum) || amountNum <= 0) return;
 
     try {
-      await runTransaction(db, async (tx) => {
-        const accountRef = doc(db, 'accounts', accountId);
-        const accountDoc = await tx.get(accountRef);
-        
-        if (!accountDoc.exists()) throw new Error("Account does not exist!");
-
-        const currentBalance = accountDoc.data().currentBalance;
-        const newBalance = type === 'income' 
-          ? currentBalance + amountNum 
-          : currentBalance - amountNum;
-
-        // Create transaction
-        const transRef = doc(collection(db, 'transactions'));
-        tx.set(transRef, {
-          amount: amountNum,
-          type,
-          categoryId,
-          accountId,
-          date,
-          description,
-          userId: user.uid,
-          currency: transactionCurrency,
-          createdAt: serverTimestamp(),
-        });
-
-        // Update balance
-        tx.update(accountRef, { currentBalance: newBalance });
+      await api.createTransaction({
+        amount: amountNum,
+        type,
+        accountId: parseInt(accountId),
+        categoryId: parseInt(categoryId),
+        date: new Date(date).toISOString(),
+        description,
+        currency: transactionCurrency,
       });
 
       toast.success('Transaction added');
+      fetchData();
       closeModal();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error('Failed to add transaction');
+      toast.error(err.message || 'Failed to add transaction');
     }
   };
 
   const handleDelete = async (t: Transaction) => {
     if (!confirm('Delete this transaction? The account balance will be reverted.')) return;
     try {
-      await runTransaction(db, async (tx) => {
-        const accountRef = doc(db, 'accounts', t.accountId);
-        const accountDoc = await tx.get(accountRef);
-        
-        // Even if account doc is missing, we delete transaction
-        if (accountDoc.exists()) {
-          const currentBalance = accountDoc.data().currentBalance;
-          const revertedBalance = t.type === 'income' 
-            ? currentBalance - t.amount 
-            : currentBalance + t.amount;
-          tx.update(accountRef, { currentBalance: revertedBalance });
-        }
-        
-        tx.delete(doc(db, 'transactions', t.id));
-      });
+      await api.deleteTransaction(t.id);
       toast.success('Transaction deleted');
-    } catch (err) {
-      toast.error('Failed to delete transaction');
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete transaction');
     }
   };
 

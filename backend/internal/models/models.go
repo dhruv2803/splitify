@@ -10,10 +10,13 @@ type User struct {
 	UID         string         `gorm:"primaryKey" json:"uid"`
 	Email       string         `gorm:"uniqueIndex;not null" json:"email"`
 	DisplayName string         `json:"displayName"`
-	PhotoURL    string         `json:"photoURL"`
-	CreatedAt   time.Time      `json:"createdAt"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	PhotoURL            string         `json:"photoURL"`
+	Currency            string         `gorm:"default:'INR'" json:"currency"`
+	OnboardingCompleted bool           `gorm:"default:false" json:"onboardingCompleted"`
+	IsAdmin             bool           `gorm:"default:false" json:"isAdmin"`
+	CreatedAt           time.Time      `json:"createdAt"`
+	UpdatedAt           time.Time      `json:"updatedAt"`
+	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 type Account struct {
@@ -25,6 +28,7 @@ type Account struct {
 	UserID         string         `gorm:"index;not null" json:"userId"`
 	Color          string         `json:"color"`
 	Icon           string         `json:"icon"`
+	Currency       string         `gorm:"default:'INR'" json:"currency"`
 	CreatedAt      time.Time      `json:"createdAt"`
 	UpdatedAt      time.Time      `json:"updatedAt"`
 	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`
@@ -50,6 +54,7 @@ type Transaction struct {
 	AccountID   uint           `gorm:"not null" json:"accountId"`
 	Date        time.Time      `gorm:"not null" json:"date"`
 	Description string         `json:"description"`
+	Currency    string         `gorm:"default:'INR'" json:"currency"`
 	UserID      string         `gorm:"index;not null" json:"userId"`
 	GroupID     *uint          `gorm:"index" json:"groupId,omitempty"`
 	CreatedAt   time.Time      `json:"createdAt"`

@@ -16,6 +16,7 @@ import { AdminPage } from './components/AdminPage';
 import { LandingPage } from './components/LandingPage';
 import { OnboardingTour } from './components/OnboardingTour';
 import { AnimatePresence, motion } from 'motion/react';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
 function AppContent() {
   const { user, loading, profile } = useAuth();
@@ -101,10 +102,14 @@ function AppContent() {
 }
 
 export default function App() {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
   return (
-    <AuthProvider>
-      <Toaster position="top-center" />
-      <AppContent />
-    </AuthProvider>
+    <GoogleOAuthProvider clientId={clientId}>
+      <AuthProvider>
+        <Toaster position="top-center" />
+        <AppContent />
+      </AuthProvider>
+    </GoogleOAuthProvider>
   );
 }

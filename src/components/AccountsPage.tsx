@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import { api } from '../lib/api';
 import { useAuth } from './AuthProvider';
 import { Account, AccountType, CURRENCIES } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
@@ -34,12 +33,20 @@ export function AccountsPage() {
     'bg-sky-600', 'bg-violet-600', 'bg-slate-800', 'bg-fuchsia-600'
   ];
 
+  const fetchAccounts = async () => {
+    try {
+      const data = await api.getAccounts();
+      // Ensure IDs are strings for consistency in the frontend
+      const formatted = (data || []).map((acc: any) => ({ ...acc, id: acc.id.toString() }));
+      setAccounts(formatted);
+    } catch (err) {
+      console.error('Failed to fetch accounts:', err);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'accounts'), where('userId', '==', user.uid));
-    return onSnapshot(q, (snapshot) => {
-      setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account)));
-    });
+    fetchAccounts();
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -52,29 +59,29 @@ export function AccountsPage() {
       const adjustedBalance = type === 'card' ? -Math.abs(balanceNum) : balanceNum;
 
       if (editingAccount) {
-        await updateDoc(doc(db, 'accounts', editingAccount.id), {
+        await api.updateAccount(editingAccount.id, {
           name, 
           type, 
           color,
-          currency: accountCurrency
+          currency: accountCurrency,
+          initialBalance: editingAccount.initialBalance // Backend enforces this anyway
         });
         toast.success('Account updated');
       } else {
-        await addDoc(collection(db, 'accounts'), {
+        await api.createAccount({
           name,
           type,
           initialBalance: adjustedBalance,
           currentBalance: adjustedBalance,
-          userId: user.uid,
           color,
           currency: accountCurrency,
-          createdAt: serverTimestamp(),
         });
         toast.success('Account created');
       }
+      fetchAccounts();
       closeModal();
-    } catch (err) {
-      toast.error('Failed to save account');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save account');
     }
   };
 
@@ -98,12 +105,13 @@ export function AccountsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure? All transactions associated with this account will remain (orphaned or could be deleted).')) return;
+    if (!confirm('Are you sure? Only empty accounts can be deleted.')) return;
     try {
-      await deleteDoc(doc(db, 'accounts', id));
+      await api.deleteAccount(id);
       toast.success('Account deleted');
-    } catch (err) {
-      toast.error('Failed to delete account');
+      fetchAccounts();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete account');
     }
   };
 

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/dhruv2803/splitify/backend/internal/models"
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -21,7 +22,17 @@ func InitDB() {
 
 	switch dbType {
 	case "sqlite":
-		DB, err = gorm.Open(sqlite.Open("splitify.db"), &gorm.Config{})
+		dbPath := os.Getenv("DB_PATH")
+		if dbPath == "" {
+			dbPath = "splitify.db"
+		}
+		DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	case "postgres":
+		dsn := os.Getenv("DB_URL")
+		if dsn == "" {
+			log.Fatal("DB_URL environment variable is required for PostgreSQL")
+		}
+		DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	default:
 		log.Fatalf("Unsupported DB_TYPE: %s", dbType)
 	}

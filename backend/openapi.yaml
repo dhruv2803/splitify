@@ -1,0 +1,426 @@
+openapi: 3.0.3
+info:
+  title: Splitify API
+  description: API for Splitify expense management application
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        uid: { type: string }
+        email: { type: string }
+        displayName: { type: string }
+        photoURL: { type: string }
+        currency: { type: string }
+        onboardingCompleted: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    Category:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        type: { type: string, enum: [expense, income] }
+        icon: { type: string }
+        userId: { type: string }
+        isDefault: { type: boolean }
+    Account:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        type: { type: string, enum: [wallet, card, bank] }
+        initialBalance: { type: number }
+        currentBalance: { type: number }
+        userId: { type: string }
+        color: { type: string }
+        icon: { type: string }
+        currency: { type: string }
+    Transaction:
+      type: object
+      properties:
+        id: { type: integer }
+        amount: { type: number }
+        type: { type: string, enum: [expense, income] }
+        categoryId: { type: integer }
+        accountId: { type: integer }
+        date: { type: string, format: date-time }
+        description: { type: string }
+        currency: { type: string }
+        userId: { type: string }
+    DashboardData:
+      type: object
+      properties:
+        netWorth: { type: number }
+        currencyTotals:
+          type: array
+          items:
+            type: object
+            properties:
+              currency: { type: string }
+              amount: { type: number }
+        monthlyStats:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              income: { type: number }
+              expense: { type: number }
+        categorySpending:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              value: { type: number }
+        dailyTrend:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string }
+              amount: { type: number }
+        accountSummaries:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              type: { type: string }
+              balance: { type: number }
+              color: { type: string }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+
+  /api/me:
+    get:
+      summary: Get current user UID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uid: { type: string }
+
+  /api/profile/sync:
+    post:
+      summary: Sync user profile with Firebase token
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+
+  /api/profile:
+    get:
+      summary: Get user profile
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+    put:
+      summary: Update user profile
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/User' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+
+  /api/profile/purge:
+    post:
+      summary: Purge all user data
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+
+  /api/dashboard:
+    get:
+      summary: Get dashboard data
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardData' }
+
+  /api/categories:
+    get:
+      summary: List categories
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Category' }
+    post:
+      summary: Create category
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Category' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+
+  /api/categories/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      summary: Update category
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Category' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+    delete:
+      summary: Delete category
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/accounts:
+    get:
+      summary: List accounts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Account' }
+    post:
+      summary: Create account
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Account' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+
+  /api/accounts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      summary: Update account
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Account' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+    delete:
+      summary: Delete account
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/transactions:
+    get:
+      summary: List transactions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Transaction' }
+    post:
+      summary: Create transaction
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Transaction' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+
+  /api/transactions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      summary: Update transaction
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Transaction' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+    delete:
+      summary: Delete transaction
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+
+  /api/admin/stats:
+    get:
+      summary: Get system statistics
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users: { type: integer }
+                  accounts: { type: integer }
+                  transactions: { type: integer }
+                  groupExpenses: { type: integer }
+
+  /api/admin/users:
+    get:
+      summary: List all users
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+
+  /api/admin/users/{uid}/role:
+    parameters:
+      - name: uid
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      summary: Update user admin role
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isAdmin: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+
+  /api/admin/migrate:
+    post:
+      summary: Run data migration
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }

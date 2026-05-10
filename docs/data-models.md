@@ -1,116 +1,88 @@
 # Data Models - Splitify
 
-Splitify uses Firestore as its primary data store. The following TypeScript interfaces define the structure of the documents in each collection.
+Splitify uses **SQLite** (managed via GORM) as its primary data store. The following models define the relational schema in the `splitify.db` file.
 
-## Firestore Collections
+## Relational Schema
 
-### `users`
-Stores user profile information and global settings.
-- **Path**: `users/{uid}`
-- **Interface**: `UserProfile`
-```typescript
-interface UserProfile {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  photoURL: string | null;
-  currency?: string; // Default currency for aggregation (e.g., 'INR', 'USD')
-  isAdmin?: boolean; // Admin privilege flag
-  onboardingCompleted?: boolean; // Track if user has finished the tutorial
-  createdAt: string; // ISO string or serverTimestamp
-}
-```
+### `users` table
+Stores user profile information and administrative roles.
+- **Primary Key**: `uid` (string from Google SSO)
+- **Fields**:
+  - `email`: string
+  - `display_name`: string
+  - `photo_url`: string
+  - `currency`: string (Default: 'INR')
+  - `is_admin`: boolean (Default: false)
+  - `onboarding_completed`: boolean (Default: false)
+  - `created_at`: datetime
+  - `updated_at`: datetime
 
-### `accounts`
-Stores individual funding sources (wallets, bank accounts, cards).
-- **Path**: `accounts/{accountId}`
-- **Interface**: `Account`
-```typescript
-interface Account {
-  id: string;
-  name: string;
-  type: 'wallet' | 'card' | 'bank';
-  initialBalance: number;
-  currentBalance: number; // Updated automatically on transactions
-  userId: string;
-  color: string; // Tailwind bg class (e.g., 'bg-blue-600')
-  icon: string;
-  currency?: string; // Account-specific currency
-  createdAt: string;
-}
-```
+### `accounts` table
+Stores individual funding sources.
+- **Primary Key**: `id` (Auto-incrementing Integer)
+- **Fields**:
+  - `name`: string
+  - `type`: 'wallet' | 'card' | 'bank'
+  - `initial_balance`: float64
+  - `current_balance`: float64 (Updated atomically via backend transactions)
+  - `user_id`: string (Foreign Key to users.uid)
+  - `color`: string
+  - `icon`: string
+  - `currency`: string
 
-### `transactions`
-Personal (non-group) income and expense records.
-- **Path**: `transactions/{transactionId}`
-- **Interface**: `Transaction`
-```typescript
-interface Transaction {
-  id: string;
-  amount: number;
-  type: 'expense' | 'income';
-  categoryId: string;
-  accountId: string;
-  date: string; // YYYY-MM-DD
-  description: string;
-  userId: string;
-  currency?: string;
-  groupId?: string; // Optional: Link to a group if split
-}
-```
+### `transactions` table
+Ledger for all income and expense records.
+- **Primary Key**: `id` (Auto-incrementing Integer)
+- **Fields**:
+  - `amount`: float64
+  - `type`: 'expense' | 'income'
+  - `category_id`: uint (Foreign Key to categories.id)
+  - `account_id`: uint (Foreign Key to accounts.id)
+  - `date`: datetime
+  - `description`: string
+  - `currency`: string
+  - `user_id`: string (Foreign Key to users.uid)
 
-### `categories`
-Customizable categories for organizing transactions.
-- **Path**: `categories/{categoryId}`
-- **Interface**: `Category`
-```typescript
-interface Category {
-  id: string;
-  name: string;
-  type: 'expense' | 'income';
-  icon: string;
-  userId: string;
-  isDefault?: boolean; // System-seeded defaults
-}
-```
+### `categories` table
+Organization categories for transactions.
+- **Primary Key**: `id` (Auto-incrementing Integer)
+- **Fields**:
+  - `name`: string
+  - `type`: 'expense' | 'income'
+  - `icon`: string
+  - `user_id`: string (Foreign Key to users.uid)
+  - `is_default`: boolean
 
-### `groups`
+### `groups` table
 Shared bill-splitting groups.
-- **Path**: `groups/{groupId}`
-- **Interface**: `Group`
-```typescript
-interface Group {
-  id: string;
-  name: string;
-  ownerId: string;
-  members: string[]; // Array of UIDs
-  createdAt: string;
-}
-```
+- **Primary Key**: `id` (Auto-incrementing Integer)
+- **Fields**:
+  - `name`: string
+  - `owner_id`: string (Foreign Key to users.uid)
+  - `members`: (Many-to-many relationship via `group_members` join table)
 
-### `groupExpenses`
+### `group_expenses` table
 Expenses logged within a specific group.
-- **Path**: `groupExpenses/{expenseId}`
-- **Interface**: `GroupExpense`
-```typescript
-interface GroupExpense {
-  id: string;
-  description: string;
-  totalAmount: number;
-  paidBy: string; // userId of the payer
-  groupId: string;
-  date: string;
-  splits: Split[];
-  userId: string; // duplicate of paidBy or creator for security rules
-  currency?: string;
-}
+- **Primary Key**: `id` (Auto-incrementing Integer)
+- **Fields**:
+  - `description`: string
+  - `total_amount`: float64
+  - `paid_by`: string (Foreign Key to users.uid)
+  - `group_id`: uint (Foreign Key to groups.id)
+  - `date`: datetime
+  - `currency`: string
 
-interface Split {
-  userId: string;
-  amount: number;
-  status: 'pending' | 'settled';
-}
-```
+### `group_expense_splits` table
+Individual shares of a group expense.
+- **Fields**:
+  - `group_expense_id`: uint
+  - `user_id`: string
+  - `amount`: float64
+  - `status`: 'pending' | 'settled'
+
+## Database Integrity & Transitions
+- **Atomic Balance Updates**: When a transaction is created, updated, or deleted, the backend uses a GORM `Transaction` block to ensure the corresponding `Account.current_balance` is recalculated accurately.
+- **Cascading Deletes**: User profile purging uses database-level logic to remove all associated categories, accounts, and transactions.
 
 ## Enums and Constants
 - `CURRENCIES`: Supported currency list with codes, names, and symbols (USD, EUR, GBP, JPY, INR, CAD, AUD, BRL).

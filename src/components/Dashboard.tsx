@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
-import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { api } from '../lib/api';
+import { DashboardData } from '../lib/api-generated';
 import { useAuth } from './AuthProvider';
 import { Account, Transaction, Category } from '../types';
 import { cn, formatCurrency, convertCurrency } from '../lib/utils';
@@ -19,10 +19,7 @@ interface DashboardProps {
 
 export function Dashboard({ setActiveTab }: DashboardProps) {
   const { user, profile } = useAuth();
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const currency = profile?.currency || 'INR';
@@ -31,145 +28,22 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
   useEffect(() => {
     if (!user) return;
 
-    const qAccounts = query(collection(db, 'accounts'), where('userId', '==', user.uid));
-    const unsubAccounts = onSnapshot(qAccounts, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Account));
-      setAccounts(data);
-      setLoading(false);
-    });
-
-    const qTransactions = query(
-      collection(db, 'transactions'),
-      where('userId', '==', user.uid),
-      orderBy('date', 'desc'),
-      limit(5)
-    );
-    const unsubTransactions = onSnapshot(qTransactions, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-      setTransactions(data);
-    });
-
-    // Fetch more transactions for charts (e.g. last 6 months)
-    const qAllTransactions = query(
-      collection(db, 'transactions'),
-      where('userId', '==', user.uid),
-      orderBy('date', 'desc')
-    );
-    const unsubAllTransactions = onSnapshot(qAllTransactions, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-      setAllTransactions(data);
-    });
-
-    const qCategories = query(collection(db, 'categories'), where('userId', '==', user.uid));
-    const unsubCategories = onSnapshot(qCategories, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
-      setCategories(data);
-    });
-
-    return () => {
-      unsubAccounts();
-      unsubTransactions();
-      unsubAllTransactions();
-      unsubCategories();
+    const fetchDashboard = async () => {
+      try {
+        const d = await api.getDashboard();
+        setData(d);
+        setLoading(false);
+      } catch (err) {
+        console.error('Failed to fetch dashboard:', err);
+      }
     };
+
+    fetchDashboard();
   }, [user]);
 
-  const currencyTotals = useMemo(() => {
-    const totals: Record<string, number> = {};
-    accounts.forEach(acc => {
-      const curr = acc.currency || 'INR';
-      totals[curr] = (totals[curr] || 0) + acc.currentBalance;
-    });
-    return Object.entries(totals).sort((a, b) => b[1] - a[1]);
-  }, [accounts]);
+  if (loading || !data) return null;
 
-  const totalBalanceConverted = accounts.reduce((acc, curr) => {
-    return acc + convertCurrency(curr.currentBalance, curr.currency || 'INR', currency);
-  }, 0);
-
-  // Chart Data Processing
-  const monthlyData = useMemo(() => {
-    const months: { [key: string]: { name: string; income: number; expense: number } } = {};
-    
-    // Last 6 months
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      const key = `${date.getFullYear()}-${date.getMonth()}`;
-      months[key] = {
-        name: date.toLocaleDateString(undefined, { month: 'short' }),
-        income: 0,
-        expense: 0
-      };
-    }
-
-    allTransactions.forEach(t => {
-      const date = new Date(t.date);
-      const key = `${date.getFullYear()}-${date.getMonth()}`;
-      if (months[key]) {
-        const convertedAmt = convertCurrency(t.amount, t.currency || 'INR', currency);
-        if (t.type === 'income') months[key].income += convertedAmt;
-        else months[key].expense += convertedAmt;
-      }
-    });
-
-    return Object.values(months);
-  }, [allTransactions, currency]);
-
-  const categoryData = useMemo(() => {
-    const cats: { [key: string]: number } = {};
-    allTransactions
-      .filter(t => t.type === 'expense')
-      .forEach(t => {
-        const catName = categories.find(c => c.id === t.categoryId)?.name || 'Other';
-        const convertedAmt = convertCurrency(t.amount, t.currency || 'INR', currency);
-        cats[catName] = (cats[catName] || 0) + convertedAmt;
-      });
-
-    return Object.entries(cats)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
-  }, [allTransactions, categories, currency]);
-
-  const dailyTrendData = useMemo(() => {
-    const days: { [key: string]: number } = {};
-    const last14Days = [...Array(14)].map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (13 - i));
-      return d.toISOString().split('T')[0];
-    });
-
-    last14Days.forEach(dateStr => {
-      days[dateStr] = 0;
-    });
-
-    allTransactions
-      .filter(t => t.type === 'expense')
-      .forEach(t => {
-        const dateStr = t.date.split('T')[0];
-        if (days[dateStr] !== undefined) {
-          const convertedAmt = convertCurrency(t.amount, t.currency || 'INR', currency);
-          days[dateStr] += convertedAmt;
-        }
-      });
-
-    return Object.entries(days).map(([date, amount]) => ({
-      date: new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      amount
-    }));
-  }, [allTransactions, currency]);
-
-  const getAccountIcon = (type: string) => {
-    switch (type) {
-      case 'wallet': return WalletIcon;
-      case 'card': return CreditCard;
-      case 'bank': return Landmark;
-      default: return WalletIcon;
-    }
-  };
-
-  if (loading) return null;
+  const { netWorth, currencyTotals, monthlyStats, categorySpending, dailyTrend, accountSummaries } = data;
 
   return (
     <div className="space-y-6 md:space-y-10">
@@ -210,16 +84,16 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
             </div>
           </div>
           <div className="space-y-4">
-            {currencyTotals.length > 0 ? currencyTotals.map(([curr, amount]) => (
-              <div key={curr}>
+            {currencyTotals && currencyTotals.length > 0 ? currencyTotals.map((item: any) => (
+              <div key={item.currency}>
                 <div className={cn(
-                  "text-2xl md:text-3xl font-black tracking-tighter leading-none mb-1",
-                  amount < 0 ? "text-red-500" : "text-slate-900"
+                   "text-2xl md:text-3xl font-black tracking-tighter leading-none mb-1",
+                   item.amount < 0 ? "text-red-500" : "text-slate-900"
                 )}>
-                  {format(amount, curr)}
+                  {format(item.amount, item.currency)}
                 </div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter opacity-70">
-                  Balance in {curr}
+                  Balance in {item.currency}
                 </p>
               </div>
             )) : (
@@ -232,30 +106,30 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
             )}
           </div>
           
-          {currencyTotals.length > 1 && (
+          {currencyTotals && currencyTotals.length > 1 && (
             <div className="mt-6 pt-6 border-t border-slate-100">
                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Consolidated Total</p>
                <p className="text-sm font-black text-blue-600 tracking-tight">
-                  {format(totalBalanceConverted)}
+                  {format(netWorth || 0)}
                </p>
             </div>
           )}
           
           <div className="mt-8 flex items-center justify-between">
             <div className="flex -space-x-2">
-              {accounts.slice(0, 4).map(a => (
+              {(accountSummaries || []).slice(0, 4).map((a: any) => (
                 <div key={a.id} className={cn("w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-black text-white shadow-sm", a.color || 'bg-slate-400')}>
                   {a.name[0].toUpperCase()}
                 </div>
               ))}
-              {accounts.length > 4 && (
+              {accountSummaries && accountSummaries.length > 4 && (
                 <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[9px] font-black text-slate-400 shadow-sm">
-                  +{accounts.length - 4}
+                  +{accountSummaries.length - 4}
                 </div>
               )}
             </div>
             <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-widest">
-              {accounts.length} Wallets
+              {(accountSummaries || []).length} Wallets
             </span>
           </div>
         </motion.div>
@@ -273,7 +147,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
           </div>
           <div className="h-20 w-full">
              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={monthlyData}>
+                <AreaChart data={monthlyStats}>
                   <defs>
                     <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
@@ -288,7 +162,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
             <div>
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">MOM Usage</p>
               <p className="text-xl font-black text-slate-900 tracking-tight">
-                {format(monthlyData[monthlyData.length - 1]?.expense || 0)}
+                {monthlyStats && monthlyStats.length > 0 ? format(monthlyStats[monthlyStats.length - 1]?.expense || 0) : format(0)}
               </p>
             </div>
             <div className="text-right">
@@ -315,13 +189,13 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={categoryData}
+                    data={categorySpending}
                     innerRadius={22}
                     outerRadius={30}
                     paddingAngle={4}
                     dataKey="value"
                   >
-                    {categoryData.map((entry, index) => (
+                    {categorySpending.map((entry: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                     ))}
                   </Pie>
@@ -330,21 +204,21 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xl font-black text-slate-900 tracking-tight leading-none mb-1 truncate">
-                {categoryData[0]?.name || 'N/A'}
+                {categorySpending && categorySpending[0]?.name || 'N/A'}
               </p>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter truncate opacity-80">
-                {categoryData[0] ? format(categoryData[0].value) : format(0)}
+                {categorySpending && categorySpending[0] ? format(categorySpending[0].value || 0) : format(0)}
               </p>
             </div>
           </div>
           <div className="mt-6 flex gap-1 h-1 rounded-full overflow-hidden">
-            {categoryData.length > 0 ? categoryData.map((c, i) => (
+            {categorySpending && categorySpending.length > 0 ? categorySpending.map((c: any, i: number) => (
               <div 
                 key={c.name} 
                 className="h-full transition-all duration-500" 
                 style={{ 
                   backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
-                  width: `${(c.value / (categoryData.reduce((a, b) => a + b.value, 0) || 1)) * 100}%`
+                  width: `${(c.value / ((categorySpending as any).reduce((a: any, b: any) => a + b.value, 0) || 1)) * 100}%`
                 }}
               />
             )) : <div className="w-full bg-slate-100 rounded-full" />}
@@ -368,7 +242,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
            
            <div className="h-[280px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dailyTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <BarChart data={dailyTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis 
                     dataKey="date" 
@@ -423,20 +297,20 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                  <div className="text-center">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">AGGREGATE</p>
                     <p className="text-xl font-black text-slate-900 tracking-tighter">
-                      {format(categoryData.reduce((acc, curr) => acc + curr.value, 0))}
+                      {format(categorySpending ? categorySpending.reduce((acc: any, curr: any) => acc + (curr.value || 0), 0) : 0)}
                     </p>
                  </div>
               </div>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={categoryData}
+                    data={categorySpending}
                     innerRadius={65}
                     outerRadius={85}
                     paddingAngle={8}
                     dataKey="value"
                   >
-                    {categoryData.map((entry, index) => (
+                    {categorySpending && categorySpending.map((entry: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} stroke="none" />
                     ))}
                   </Pie>
@@ -458,16 +332,16 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
            </div>
 
            <div className="mt-auto space-y-2">
-              {categoryData.slice(0, 3).map((item, index) => (
+              {categorySpending && categorySpending.slice(0, 3).map((item: any, index: number) => (
                 <div key={item.name} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 transition-colors">
                    <div className="flex items-center gap-2 min-w-0">
                       <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}></div>
                       <span className="text-[11px] font-bold text-slate-600 truncate">{item.name}</span>
                    </div>
                    <div className="text-right shrink-0">
-                      <span className="text-[11px] font-black text-slate-900 tracking-tighter">{format(item.value)}</span>
+                      <span className="text-[11px] font-black text-slate-900 tracking-tighter">{format(item.value || 0)}</span>
                       <span className="text-[9px] font-black text-slate-400 ml-2 bg-slate-100 px-1 rounded">
-                        {Math.round((item.value / (categoryData.reduce((a, b) => a + b.value, 0) || 1)) * 100)}%
+                        {Math.round((item.value / (categorySpending.reduce((a: any, b: any) => a + (b.value || 0), 0) || 1)) * 100)}%
                       </span>
                    </div>
                 </div>
@@ -493,18 +367,18 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                <div className="flex gap-8">
                   <div>
                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Total Earned</p>
-                    <p className="text-2xl font-black text-slate-900 tracking-tighter">{format(monthlyData.reduce((a, b) => a + b.income, 0))}</p>
+                    <p className="text-2xl font-black text-slate-900 tracking-tighter">{format(monthlyStats ? monthlyStats.reduce((a: any, b: any) => a + (b.income || 0), 0) : 0)}</p>
                   </div>
                   <div>
                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Total Spent</p>
-                    <p className="text-2xl font-black text-blue-600 tracking-tighter">{format(monthlyData.reduce((a, b) => a + b.expense, 0))}</p>
+                    <p className="text-2xl font-black text-blue-600 tracking-tighter">{format(monthlyStats ? monthlyStats.reduce((a: any, b: any) => a + (b.expense || 0), 0) : 0)}</p>
                   </div>
                </div>
             </div>
 
             <div className="h-[200px] w-full">
                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                  <BarChart data={monthlyStats} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                     <XAxis 
                       dataKey="name" 
                       axisLine={false} 

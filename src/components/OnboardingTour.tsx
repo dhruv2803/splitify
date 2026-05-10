@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './AuthProvider';
-import { db } from '../lib/firebase';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
+import { api } from '../lib/api';
 import { X, ChevronRight, ChevronLeft, Sparkles, Target } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'react-hot-toast';
@@ -255,10 +254,10 @@ export function OnboardingTour({ activeTab, setActiveTab, isOpen, onClose }: Onb
     if (user) {
       try {
         localStorage.setItem(`onboarding_seen_${user.uid}`, 'true');
-        // Mark as completed in Firestore using setDoc with merge for higher reliability
-        await setDoc(doc(db, 'users', user.uid), {
+        // Mark as completed in Go backend
+        await api.updateProfile({
           onboardingCompleted: true
-        }, { merge: true });
+        });
         toast.success('Onboarding completed');
       } catch (err) {
         console.error("Failed to update onboarding status", err);

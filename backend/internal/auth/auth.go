@@ -3,46 +3,15 @@ package auth
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
 
-	firebase "firebase.google.com/go/v4"
-	"firebase.google.com/go/v4/auth"
+	"github.com/dhruv2803/splitify/backend/internal/models"
 	"github.com/gin-gonic/gin"
-	"google.golang.org/api/option"
+	"google.golang.org/api/idtoken"
+	"gorm.io/gorm"
 )
-
-var AuthClient *auth.Client
-
-func InitFirebase() {
-	ctx := context.Background()
-	
-	// Check if service account file exists
-	serviceAccountKey := os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
-	var app *firebase.App
-	var err error
-
-	if serviceAccountKey != "" {
-		opt := option.WithCredentialsFile(serviceAccountKey)
-		app, err = firebase.NewApp(ctx, nil, opt)
-	} else {
-		// Try to use default credentials (useful for GCP deployment)
-		app, err = firebase.NewApp(ctx, nil)
-	}
-
-	if err != nil {
-		log.Fatalf("Error initializing firebase app: %v\n", err)
-	}
-
-	AuthClient, err = app.Auth(ctx)
-	if err != nil {
-		log.Fatalf("Error getting auth client: %v\n", err)
-	}
-
-	fmt.Println("Firebase Auth initialized")
-}
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -60,15 +29,47 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		token, err := AuthClient.VerifyIDToken(context.Background(), idToken)
+		clientID := os.Getenv("GOOGLE_CLIENT_ID")
+		payload, err := idtoken.Validate(context.Background(), idToken, clientID)
 		if err != nil {
+			fmt.Printf("Token validation failed: %v\n", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
 			return
 		}
 
-		// Set UID in context for use in handlers
-		c.Set("uid", token.UID)
+		// Set user info in context for use in handlers
+		// Google ID Token claims: sub (uid), email, name, picture
+		c.Set("uid", payload.Subject)
+		c.Set("email", payload.Claims["email"])
+		c.Set("name", payload.Claims["name"])
+		c.Set("picture", payload.Claims["picture"])
+		c.Next()
+	}
+}
+
+func AdminMiddleware(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid := c.GetString("uid")
+		if uid == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+
+		var user models.User
+		if err := db.Where("uid = ?", uid).First(&user).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+			c.Abort()
+			return
+		}
+
+		if !user.IsAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			c.Abort()
+			return
+		}
+
 		c.Next()
 	}
 }
